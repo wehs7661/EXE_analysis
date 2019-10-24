@@ -66,7 +66,7 @@ def data_extraction(dhdl, freq):
 
     return time, state 
 
-if __name__ == '__main__':
+def main():
     args = initialize()
 
     if args.keyword is None:

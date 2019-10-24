@@ -200,7 +200,7 @@ def get_final_histogram(n_states, logfile, temp):
     return counts
 
 
-if __name__ == '__main__':
+def main():
     args = initialize()
 
     rc('font', **{
