@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 """
-This is a Python script for analyzing the log file generated from the weights equilibration simulation. 
+This is a Python script for analyzing the log file generated from the expanded ensemble simulation. 
 The script performs the following analysis:
 1. Generate a plot of Wang-Landau incrementor as a function of time
 2. Output the histogram at the last time frame of the expanded ensemble simulation
 3. Print out equilibrated Wang-Landau weights which can directly be pasted to the .mdp file if needed. 
-4. Estimate the uncertainty in free energy difference between the first and the last state from the final histogram.
+4. Print out the averaged Wang-Landau weights for a user-definied portion of the last iteration.
+5. Estimate the uncertainty in free energy difference between the first and the last state from the final histogram.
 """
 
 import sys
@@ -23,7 +24,7 @@ def initialize():
     """
 
     parser = argparse.ArgumentParser(
-        description='This code analyzes the log file generated from weights equilibration simulations.')
+        description='This code analyzes the log file generated from expanded ensemble simulations.')
     parser.add_argument('-f',
                         '--log',
                         nargs='+',
@@ -47,7 +48,7 @@ def get_equilibrated_info(logfile):
     This function analyzes the log file and performs the following tasks:
     1. Output the data needed for generating a plot of Wang-Landau incrementor as a function of time
     2. Print out equilibrated Wang-Landau weights which can directly be pasted to the .mdp file. 
-       For example, the equilibrated weights of a solvent simulation can often serve as a good initial
+       Typically, the equilibrated weights of a solvent simulation can often serve as a good initial
        guess of init-lambda-weights in the binding complex simulation.
 
     Parameters
@@ -89,7 +90,8 @@ def get_equilibrated_info(logfile):
     wl_incrementor = []
     step = []
     line_n = 0
-    counter = 0    # a counter for examining if weights are equilibrated
+    equil = False    # for examining if weights are equilibrated
+    weights = []
 
     for l in lines:
         line_n += 1
@@ -112,7 +114,7 @@ def get_equilibrated_info(logfile):
                     wl_incrementor.append(float(l_search.split(':')[1]))
 
         if 'Weights have equilibrated' in l:
-            counter += 1
+            equil = True
             equil_step = l.split(':')[0].split()[1]    # the step that the weights are equilibrated
             # the info of the incrementor typically appear in line line_n - 3 but it depends
             search_lines2 = lines[line_n - 8: line_n]
@@ -126,7 +128,7 @@ def get_equilibrated_info(logfile):
     time = np.array(step) * time_step
     equil_time = float(equil_step) * time_step / 1000   # units: ns
 
-    if counter == 0:
+    if equil is False:
         print('The weights have not equilibrated.')
         print('The Wang-Landau incrementor at the last time frame (%5.3f ns) is %s.' %
               (time[-1] / 1000, str(wl_incrementor[-1])))
