@@ -19,9 +19,9 @@ pip install -e .
 ## Examples and usage
 ### `EXE_histogram.py`: Data analysis of Wang-Landau incrementor and weighting factor
 - To check the inputs, ouputs and the description of the code, run `EXE_histogram -h`
-- To perform data analysis on `complex_0.log` using `EXE_histogram.py` and print the results to `results_histo.txt`, run `EXE_histogram -l complex_0.log`. Then two figures named with defaults will be generated, including `WL_t_complex_0.png` and `Final_hist_complex_0.png` as shown below.
+- To perform data analysis on `complex_0.log` using `EXE_histogram.py` and print the results to `results_histo.txt`, run `EXE_histogram -l complex_0.log`. Then two figures named with defaults will be generated, including `WL_t_complex_0.png` and `Final_hist_complex_0.png` as shown below. (The log files are not provided here since the files are too large.)
 - To perform data analysis on both `complex_0.log` and `complex_1.log` using `EXE_histogram.py` and print the results to `results_histo_multi.txt`, run `EXE_histogram -l complex_*.log` (or `EXE_histogram -l complex_0.png complex_1.png` without using wildcards). 4 figures will be generated.
-- Example figures as the output of data analysis performed on `complex_0.png`:
+- Example figures as the output of data analysis performed on `complex_0.log`:
 <img src="EXE_analysis/examples/WL_t_complex_0.png" width="400"/> <img src="EXE_analysis/examples/Final_hist_complex_0.png" width="400"/>
 
 ### `EXE_state_plot.py`: Data analysis of the exploration of the state
