@@ -24,10 +24,14 @@ def initialize():
 
     parser = argparse.ArgumentParser(
         description='This code analyzes the log file generated from expanded ensemble simulations.')
-    parser.add_argument('-f',
+    parser.add_argument('-l',
                         '--log',
                         nargs='+',
                         help='The filename(s) of the log file. Wildcards available.')
+    parser.add_argument('-f',
+                        '--frac',
+                        help='The fraction which is used to calcuate the average weights. A fraction of 0.25 (default) \
+                            means average the weights of the last 25 percent of the steps before weights equilibration.')
     parser.add_argument('-k',
                         '--keyword',
                         nargs='+',
@@ -42,7 +46,7 @@ def initialize():
     return args_parse
 
 
-def get_equilibrated_info(logfile):
+def get_equilibrated_info(logfile, frac):
     """
     This function analyzes the log file and performs the following tasks:
     1. Output the data needed for generating a plot of Wang-Landau incrementor as a function of time
@@ -147,7 +151,6 @@ def get_equilibrated_info(logfile):
     equil_time = float(equil_step) * time_step / 1000   # units: ns
 
     # Calculate average weights
-    frac = 0.25
     n_points = np.floor(frac * len(weights_all))       # number of list to be averaged
     weights_all = np.array(weights_all[-int(n_points):])    # only average the last portion
 
@@ -222,14 +225,14 @@ def get_final_histogram(n_states, logfile, temp):
     error = np.abs(np.log(counts[0] / counts[-1]))    # dimensionless error
 
     if temp is None:
-        print('The uncertainty of the free energy difference is %5.3f kT.' % error)
+        print('The uncertainty of the free energy difference is %5.3f kT.\n' % error)
         temp = 298.15    # default
         error *= (kb * Na * temp / 1000) * 0.23900573613
-        print('Or at 298.15K, the uncertainty is %5.3f kcal/mol' % error)
+        print('Or at 298.15K, the uncertainty is %5.3f kcal/mol\n' % error)
     else:
         error *= (kb * Na * float(temp) / 1000) * \
             0.23900573613       # unit: kcal/mol
-        print('The uncertainty of the free energy difference is %5.3f kcal/mol.' % error)
+        print('The uncertainty of the free energy difference is %5.3f kcal/mol.\n' % error)
 
     return counts
 
@@ -255,15 +258,22 @@ def main():
     if isinstance(args.temp, str):
         args.temp = list(args.temp)
 
-    # Check if the default keyword should be used
+    # Check if the default should be used
     if args.keyword is None:
         args.keyword = [logname.split('.')[0] for logname in args.log]
+    if args.frac is None:
+        args.frac = 0.25
+    elif float(args.frac) <= 0 or float(args.frac) >= 1:
+        print('Error: The fraction for average weights calculation should be between 0 and 1!')
+        sys.exit()
 
+    print('\n')
     for i in range(len(args.log)):
-        if len(args.log) > 1:
-            print('Output data of the log file: %s' % args.log[i])
+        result_str = 'Data analysis of the file %s:' % args.log[i]
+        print(result_str)
+        print('=' * len(result_str))
 
-        [time, wl_incrementor, n_states, weights_f, weights_a, equil_time] = get_equilibrated_info(args.log[i])
+        [time, wl_incrementor, n_states, weights_f, weights_a, equil_time] = get_equilibrated_info(args.log[i], args.frac)
         time = time / 1000  # convert from ps to ns
 
         if args.temp is None:
@@ -271,9 +281,9 @@ def main():
         else:
             counts = get_final_histogram(n_states, args.log[i], args.temp[i])
 
-        print('The weights were equilibrated at %5.3f ns' % equil_time)
-        print('The average weights of the last 25%', 'of steps right before the weights are equilibrated are: ', weights_a)
-        print('The final weights are: ', weights_f)
+        print('The weights were equilibrated at %5.3f ns\n' % equil_time)
+        print('The average weights of the last %s percent' % str(args.frac * 100),'of steps right before the weights are equilibrated are: ', weights_a, '\n')
+        print('The final weights are: ', weights_f, '\n')
 
         # Plot WL incrementor as a function of time
         plt.figure()  # ready to plot!
