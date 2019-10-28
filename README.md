@@ -22,7 +22,7 @@ pip install -e .
 - To perform data analysis on `complex_0.log` using `EXE_histogram.py` and print the results to `results_histo.txt`, run `EXE_histogram -l complex_0.log`. Then two figures named with defaults will be generated, including `WL_t_complex_0.png` and `Final_hist_complex_0.png` as shown below.
 - To perform data analysis on both `complex_0.log` and `complex_1.log` using `EXE_histogram.py` and print the results to `results_histo_multi.txt`, run `EXE_histogram -l complex_*.log` (or `EXE_histogram -l complex_0.png complex_1.png` without using wildcards). 4 figures will be generated.
 - Example figures as the output of data analysis performed on `complex_0.png`:
-<img src="EXE_analysis/examples/WL_t_complex_0.png" width="450"/> <img src="EXE_analysis/examples/Final_hist_complex_0.png" width="450"/>
+<img src="EXE_analysis/examples/WL_t_complex_0.png" width="400"/> <img src="EXE_analysis/examples/Final_hist_complex_0.png" width="400"/>
 
 ### `EXE_state_plot.py`: Data analysis of the exploration of the state
 
