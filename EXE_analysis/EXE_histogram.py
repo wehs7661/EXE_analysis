@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 This is a Python script for analyzing the log file generated from the expanded ensemble simulation. 
 The script performs the following analysis:
@@ -68,6 +67,8 @@ def get_equilibrated_info(logfile):
         The number of alchemical states
     final_weights : str
         The final equilibrated lambda weights
+    weights_avg :
+        The average weights of the last portion of steps before the weights are equilibrated
     equil_time : float
         The time that the weights are equilibrated
 
@@ -91,12 +92,22 @@ def get_equilibrated_info(logfile):
     step = []
     line_n = 0
     equil = False    # for examining if weights are equilibrated
-    weights = []
+    weights = []     # a list of weights at a certain step
+    weights_all = [] # a list of lists of weights at different time steps 
 
     for l in lines:
         line_n += 1
         if ' dt ' in l:
             time_step = float(l.split('=')[1])
+
+        if 'weight-equil-wl-delta' in l:
+            wl_cutoff = float(l.split('=')[1])
+        
+        if 'wl-scale' in l:
+            wl_scale = float(l.split('=')[1])
+
+        if 'n-lambdas' in l:
+            n_states = int(l.split('=')[1])
 
         if 'Wang-Landau incrementor is:' in l and not wl_incrementor:
             # not wl_incrementor returns True if the list is empty
@@ -112,6 +123,13 @@ def get_equilibrated_info(logfile):
             for l_search in search_lines:
                 if 'Wang-Landau incrementor is:' in l_search:
                     wl_incrementor.append(float(l_search.split(':')[1]))
+        
+        # Construct the list to calculate the average WL weights (first find the point of the last update before the weights are equilibrated)
+        if 'Wang-Landau incrementor is:' in l and len(wl_incrementor) > 0 and (wl_incrementor[-1] > wl_cutoff) and (wl_incrementor[-1] * wl_scale <= wl_cutoff):
+            for i in range(n_states):
+                weights.append(float(lines[line_n + i + 1].split()[6]))
+            weights_all.append(weights)
+            weights = []
 
         if 'Weights have equilibrated' in l:
             equil = True
@@ -120,7 +138,7 @@ def get_equilibrated_info(logfile):
             search_lines2 = lines[line_n - 8: line_n]
             for l_search in search_lines2:
                 if 'weights are now: ' in l_search:
-                    final_weights = l_search.split(':')[2]
+                    final_weights = l_search.split(':')[2]   # this would include '\n'
                     # no need to change to float since this is only for easy pasting to the .mdp file
                     float_weights = [float(i) for i in l_search.split(':')[2].split()]
             break
@@ -128,6 +146,20 @@ def get_equilibrated_info(logfile):
     time = np.array(step) * time_step
     equil_time = float(equil_step) * time_step / 1000   # units: ns
 
+    # Calculate average weights
+    frac = 0.25
+    n_points = np.floor(frac * len(weights_all))       # number of list to be averaged
+    weights_all = np.array(weights_all[-int(n_points):])    # only average the last portion
+
+    list_sum = 0
+    for i in range(len(weights_all)):
+        list_sum += weights_all[i]
+    weights_avg_float = list_sum/len(weights_all)
+    weights_avg_float = [round(x, 5) for x in weights_avg_float]
+
+    weights_avg =''    # make weights_ave as a string, which is easier to copy
+    for i in range(len(weights_avg_float)):
+        weights_avg += (' ' + str(weights_avg_float[i]))
     if equil is False:
         print('The weights have not equilibrated.')
         print('The Wang-Landau incrementor at the last time frame (%5.3f ns) is %s.' %
@@ -138,7 +170,7 @@ def get_equilibrated_info(logfile):
     n_states = len(float_weights)
     wl_incrementor = np.array(wl_incrementor)
 
-    return time, wl_incrementor, n_states, final_weights, equil_time 
+    return time, wl_incrementor, n_states, final_weights, weights_avg, equil_time 
 
 
 def get_final_histogram(n_states, logfile, temp):
@@ -231,7 +263,7 @@ def main():
         if len(args.log) > 1:
             print('Output data of the log file: %s' % args.log[i])
 
-        [time, wl_incrementor, n_states, weights, equil_time] = get_equilibrated_info(args.log[i])
+        [time, wl_incrementor, n_states, weights_f, weights_a, equil_time] = get_equilibrated_info(args.log[i])
         time = time / 1000  # convert from ps to ns
 
         if args.temp is None:
@@ -239,8 +271,9 @@ def main():
         else:
             counts = get_final_histogram(n_states, args.log[i], args.temp[i])
 
-        print('The weights are equilibrated at %5.3f ns' % equil_time)
-        print('The final weights are: ', weights)
+        print('The weights were equilibrated at %5.3f ns' % equil_time)
+        print('The average weights of the last 25%', 'of steps right before the weights are equilibrated are: ', weights_a)
+        print('The final weights are: ', weights_f)
 
         # Plot WL incrementor as a function of time
         plt.figure()  # ready to plot!
