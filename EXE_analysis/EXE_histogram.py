@@ -148,6 +148,17 @@ def get_equilibrated_info(logfile, frac):
             break
 
     time = np.array(step) * time_step
+    if equil is False:
+        N_update = int(np.ceil(np.log(wl_cutoff / wl_incrementor[-1]) / np.log(wl_scale)))
+        print('The weights have not equilibrated.')
+        print('The last time frame that the Wang-Landau incrementor was updated (%5.3f ns) is %s.' %
+              (time[-1] / 1000, str(wl_incrementor[-1])))
+        print('The Wang-Landau scale and the cutoff of Wang-Landau incrementor are %s and %s, respectively.' %
+              (str(wl_scale), str(wl_cutoff)))
+        print('Therefore, it requires %s more updates in Wang-Landau incrementor for the weights to be equilibrated.' % str(N_update))
+        print('Check the log file for more information.')
+        sys.exit()
+
     equil_time = float(equil_step) * time_step / 1000   # units: ns
 
     # Calculate average weights
@@ -163,12 +174,6 @@ def get_equilibrated_info(logfile, frac):
     weights_avg = ''    # make weights_ave as a string, which is easier to copy
     for i in range(len(weights_avg_float)):
         weights_avg += (' ' + str(weights_avg_float[i]))
-    if equil is False:
-        print('The weights have not equilibrated.')
-        print('The Wang-Landau incrementor at the last time frame (%5.3f ns) is %s.' %
-              (time[-1] / 1000, str(wl_incrementor[-1])))
-        print('Check the log file for more information.')
-        sys.exit()
 
     n_states = len(float_weights)
     wl_incrementor = np.array(wl_incrementor)
