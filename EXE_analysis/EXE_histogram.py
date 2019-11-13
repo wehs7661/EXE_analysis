@@ -1,11 +1,12 @@
 """
 This is a Python script for analyzing the log file generated from the expanded ensemble simulation. 
 The script performs the following analysis:
-1. Generate a plot of Wang-Landau incrementor as a function of time
-2. Output the histogram at the last time frame of the expanded ensemble simulation
-3. Print out equilibrated Wang-Landau weights which can directly be pasted to the .mdp file if needed. 
-4. Print out the averaged Wang-Landau weights for a user-definied portion of the last iteration.
-5. Estimate the uncertainty in free energy difference between the first and the last state from the final histogram.
+1. Generate a plot of Wang-Landau incrementor as a function of time.
+2. Output the histogram at the last time frame of the simulation.
+3. Output the histogram at the time that the weights are equilibrated.
+4. Print out equilibrated Wang-Landau weights which can directly be pasted to the .mdp file if needed. 
+5. Print out the averaged Wang-Landau weights for a user-definied portion of the last iteration.
+6. Estimate the uncertainty in free energy difference between the first and the last state from the final histogram.
 """
 
 import sys
@@ -123,7 +124,7 @@ def get_equilibrated_info(logfile, frac):
             step.append(int(weights_line[0].split()[1]))
 
             # the info of the incrementor typically appear in line line_n + 7 but it depends
-            search_lines = lines[line_n + 1: line_n + 7]
+            search_lines = lines[line_n + 1: line_n + 15]
             for l_search in search_lines:
                 if 'Wang-Landau incrementor is:' in l_search:
                     wl_incrementor.append(float(l_search.split(':')[1]))
@@ -139,15 +140,27 @@ def get_equilibrated_info(logfile, frac):
             equil = True
             equil_step = l.split(':')[0].split()[1]    # the step that the weights are equilibrated
             # the info of the incrementor typically appear in line line_n - 3 but it depends
-            search_lines2 = lines[line_n - 8: line_n]
-            for l_search in search_lines2:
+            search_weights = lines[line_n - 8: line_n]   # lines for searching weights
+            for l_search in search_weights:
                 if 'weights are now: ' in l_search:
                     final_weights = l_search.split(':')[2]   # this would include '\n'
                     # no need to change to float since this is only for easy pasting to the .mdp file
                     float_weights = [float(i) for i in l_search.split(':')[2].split()]
+            
+            # 30 is the approximate number of lines of metadata between the counts data and the position at which the weights are found equilibrated
+            search_counts = lines[line_n - (30 + n_states): line_n]
+            equil_counts = []
+            search_n = line_n - (30 + n_states)   # line number of the lines for searching
+            for l_search in search_counts:
+                search_n += 1
+                if 'MC-lambda information' in l_search:
+                    for i in range(n_states):
+                        # start from lines[search_n + 2]
+                        equil_counts.append(float(lines[search_n + 2 + i].split()[5]))
             break
 
     time = np.array(step) * time_step
+
     if equil is False:
         N_update = int(np.ceil(np.log(wl_cutoff / wl_incrementor[-1]) / np.log(wl_scale)))
         print('The weights have not equilibrated.')
@@ -178,7 +191,7 @@ def get_equilibrated_info(logfile, frac):
     n_states = len(float_weights)
     wl_incrementor = np.array(wl_incrementor)
 
-    return time, wl_incrementor, n_states, final_weights, weights_avg, equil_time
+    return time, wl_incrementor, n_states, final_weights, weights_avg, equil_time, equil_counts
 
 
 def get_final_histogram(n_states, logfile, temp):
@@ -205,9 +218,9 @@ def get_final_histogram(n_states, logfile, temp):
     -------
     >>> get_final_histogram(40, 'solvent_0.log')
     [8678. 8437. 8680. 9007. 8606. 7642. 8269. 7878. 7689. 7906. 7451. 7416.
- 7939. 7470. 7540. 7858. 7664. 7423. 7527. 7322. 7325. 7538. 7173. 7034.
- 6943. 6910. 6935. 6805. 6463. 6371. 6249. 6425. 6353. 6618. 6789. 6810.
- 6426. 6408. 6675. 6271.]
+    7939. 7470. 7540. 7858. 7664. 7423. 7527. 7322. 7325. 7538. 7173. 7034.
+    6943. 6910. 6935. 6805. 6463. 6371. 6249. 6425. 6353. 6618. 6789. 6810.
+    6426. 6408. 6675. 6271.]
     """
 
     f = open(logfile, 'r')
@@ -279,7 +292,7 @@ def main():
         print('=' * len(result_str))
 
         [time, wl_incrementor, n_states, weights_f, weights_a,
-            equil_time] = get_equilibrated_info(args.log[i], args.frac)
+            equil_time, equil_counts] = get_equilibrated_info(args.log[i], args.frac)
         time = time / 1000  # convert from ps to ns
 
         if args.temp is None:
@@ -302,12 +315,26 @@ def main():
         plt.savefig('WL_t_%s.png' % args.keyword[i], dpi=600)
         plt.show()
 
+        # Plot the equilbrated histogram
+        plt.figure()
+        plt.bar(np.arange(1, n_states + 1), height=equil_counts)
+        plt.xlabel('States')
+        plt.ylabel('Counts')
+        plt.title('The equilibrated histogram of the simulation')
+        plt.grid()
+        plt.savefig('Equil_hist_%s.png' % args.keyword[i], dpi=600)
+        plt.show()
+        
+
         # Plot the final histogram
         plt.figure()
-        plt.bar(np.arange(1, 41), height=counts)
+        plt.bar(np.arange(1, n_states + 1), height=counts)
         plt.xlabel('States')
         plt.ylabel('Counts')
         plt.title('The final histogram of the simulation')
         plt.grid()
         plt.savefig('Final_hist_%s.png' % args.keyword[i], dpi=600)
         plt.show()
+
+        
+
