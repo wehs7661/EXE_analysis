@@ -88,7 +88,7 @@ class LogInfo:
                 self.N_states = int(l.split('=')[1])
 
             if 'lmc-stats' in l and self.fixed is None:
-                if l.split('=')[1] == 'no':
+                if l.split('=')[1].split()[0] == 'no':
                     self.fixed = True
                 else:
                     self.fixed = False
@@ -230,12 +230,15 @@ class EXEAnalysis(LogInfo):
                         for i in range(self.N_states):
                             # start from lines[search_n + 2]
                             equil_counts.append(float(lines[search_n + 2 + i].
-                                                split()[5]))
+                                                      split()[5]))
+
+                wl_incrementor = np.array(wl_incrementor)
+                time = np.array(step) * self.dt
+                self.equil_time = float(equil_step) * self.dt / 1000
+                
                 break
 
-        wl_incrementor = np.array(wl_incrementor)
-        time = np.array(step) * self.dt
-        self.equil_time = float(equil_step) * self.dt / 1000
+
 
         # ========== 3. Exit if the weights have not equilibrated ============
         if self.equil is False:
@@ -294,8 +297,10 @@ class EXEAnalysis(LogInfo):
 
         Returns
         -------
-        counts : np.array
-            The counts of each lambda state
+        final_time : float
+            The last time frame of the simulation outputting the histogram information.
+        final_counts : np.array
+            The final counts of each lambda state.
         """
         f = open(logfile, 'r')
         lines = f.readlines()
@@ -309,10 +314,12 @@ class EXEAnalysis(LogInfo):
             if 'MC-lambda information' in l:
                 for i in range(self.N_states):
                     # start from lines[line_n - 3]
+                    # 'MC-lambda information' is lines[line_n - 1]
                     final_counts[i] = float(lines[line_n - 3 - i].split()[5])
                 break
+        final_time = float(lines[line_n + 1].split()[1])  # in ps
 
-        return final_counts
+        return final_time, final_counts
 
 
 def main():
@@ -392,6 +399,8 @@ def main():
             plt.xlabel('States')
             plt.ylabel('Counts')
             plt.title('The equilibrated histogram of the simulation')
+            if max(equil_counts) >= 10000:
+                plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
             plt.grid()
             plt.savefig('Equil_hist_%s.png' % args.keyword[i], dpi=600)
             e2 = timer.time()
@@ -399,18 +408,27 @@ def main():
             plt.show()
 
         s3 = timer.time()
+        if log_info.fixed is True:
+            print('This is a fixed-weight expanded ensemble simulation.')
+            print('Accordingly, only the final histogram will be output and saved.')
         # Extract the final counts for plotting the final histogram, no matter
         # the weights are fixed during the simulation
-        final_counts = EXE.get_final_counts(args.log[i])
+        final_time, final_counts = EXE.get_final_counts(args.log[i])
+        final_time /= 1000    # from ps to ns
+        ftime_title = str(round(final_time, 1))  # 1st decimal point
+        ftime_png = str(int(round(final_time, 0)))    # round to integer
+        # the keyword corresponding to the final time in the filename of png
 
         # Plot the final histogram
         plt.figure()
         plt.bar(np.arange(1, log_info.N_states + 1), height=final_counts)
         plt.xlabel('States')
         plt.ylabel('Counts')
-        plt.title('The final histogram of the simulation')
+        plt.title('The final histogram of the simulation (at %s ns)' %ftime_title)
+        if max(final_counts) >= 10000:
+            plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
         plt.grid()
-        plt.savefig('Final_hist_%s.png' % args.keyword[i], dpi=600)
+        plt.savefig('Final_hist_%sns_%s.png' % (ftime_png, args.keyword[i]), dpi=600)
         e3 = timer.time()
         time_needed.append(e3 - s3)
         plt.show()
