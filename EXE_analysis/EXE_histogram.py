@@ -263,8 +263,7 @@ class EXEAnalysis(LogInfo):
         err_kcal = err_kt * (kb * Na * float(self.temp) / 1000) * 0.23900573613
         print('The uncertainty of the free energy difference is %5.3f kT.\n'
               % err_kt)
-        print('Or at the simulation temperature (%s K), the uncertainty is \
-              %5.3f kcal/mol\n' % (str(float(self.temp)), err_kcal))
+        print('Or at the simulation temperature (%s K), the uncertainty is %5.3f kcal/mol\n' % (str(float(self.temp)), err_kcal))
 
         # ================ 5. Average weights calculation ====================
         n_points = np.floor(frac * len(weights_all))
@@ -310,14 +309,17 @@ class EXEAnalysis(LogInfo):
         line_n = 0
         final_counts = np.zeros(self.N_states)
         for l in lines:
+            #  print(l)   # this will print from the bottom
             line_n += 1
             if 'MC-lambda information' in l:
                 for i in range(self.N_states):
                     # start from lines[line_n - 3]
                     # 'MC-lambda information' is lines[line_n - 1]
                     final_counts[i] = float(lines[line_n - 3 - i].split()[5])
+            if '  Step  ' in l:
+                # '    Step      Time    ' is lines[line_n - 1]
+                final_time = float(lines[line_n - 2].split()[1])  # in ps
                 break
-        final_time = float(lines[line_n + 1].split()[1])  # in ps
 
         return final_time, final_counts
 
@@ -373,8 +375,8 @@ def main():
             print('The weights were equilibrated at %5.3f ns\n' %
                   EXE.equil_time)
             print('The average weights of the last %s percent' %
-                  str(args.frac * 100), 'of steps right before the weights \
-                  are equilibrated are: ', weights_a, '\n')
+                  str(args.frac * 100), 'of steps right before the weights ' 
+                  'are equilibrated are: ', weights_a, '\n')
             print('The final weights are: ', weights_f)
             e0 = timer.time()
             time_needed.append(e0 - s0)
