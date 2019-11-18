@@ -456,15 +456,18 @@ def main():
 
             # Plot the equilbrated histogram
             s4 = timer.time()
+            etime_title = str(round(EXE.equil_time, 1))     # first decimal point
+            etime_png = str(int(round(EXE.equil_time, 0)))  # round to integrer
+            # the keyword corresponding to the equilibrated time in the filename of png
             plt.figure()
             plt.bar(np.arange(1, log_info.N_states + 1), height=equil_counts)
             plt.xlabel('States')
             plt.ylabel('Counts')
-            plt.title('The equilibrated histogram of the simulation (%s ns)' % str(EXE.equil_time))
+            plt.title('The equilibrated histogram of the simulation (%s ns)' % etime_title)
             if max(equil_counts) >= 10000:
                 plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
             plt.grid()
-            plt.savefig('Equil_hist_%s.png' % args.keyword[i], dpi=600)
+            plt.savefig('Equil_hist_%sns_%s.png' % (etime_png, args.keyword[i]), dpi=600)
             e4 = timer.time()
             time_needed.append(e4 - s4)
             plt.show()
@@ -486,7 +489,7 @@ def main():
         plt.bar(np.arange(1, log_info.N_states + 1), height=final_counts)
         plt.xlabel('States')
         plt.ylabel('Counts')
-        plt.title('The final histogram of the simulation (at %s ns)' %ftime_title)
+        plt.title('The final histogram of the simulation (at %s ns)' % ftime_title)
         if max(final_counts) >= 10000:
             plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
         plt.grid()
