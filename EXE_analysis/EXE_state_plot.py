@@ -1,12 +1,13 @@
 import os
 import sys
 import glob
-import time as timer
 import argparse
 import natsort
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import rc
+from .EXE_histogram import LogInfo
+from .EXE_histogram import EXEAnalysis
 
 
 def initialize():
@@ -38,102 +39,23 @@ def initialize():
                         nargs='+',
                         help='The keyword used in the filename of the figure \
                              produced.')
-    parser.add_argument('-s',
-                        '--shift',
-                        default=True,
-                        action='store_false',
-                        help='Whether to shift the first time frame back to \
-                             zero if the dhdl file is truncated (-s means shift \
-                             the data). Will make no differences if no log file \
-                             is provided. If multiple files are given, the same \
-                             value of this parameter applies to all.')
 
     args_parse = parser.parse_args()
 
     return args_parse
 
 
-class StateTimeAnalysis:
+class StateTimeAnalysis(EXEAnalysis):
     """
-    A class for state-time analysis of expanded ensemble simulations
+    A class for state-time analysis of expanded ensemble simulations. When instantiating
+    this class, one parameter (logfile) is required.
     """
 
-    def __init__(self):
-        self.N_states = None
-        self.fixed = None
-        self.equil = False
-        self.equil_time = None
-        self.dt = None
-        self.init_wl = None
+    def __init__(self, logfile):
+        self.sample_all = False
+        EXEAnalysis.__init__(self, logfile)
 
-    def get_equil_info(self, logfile):
-        f = open(logfile, 'r')
-        lines = f.readlines()
-        f.close()
-
-        step = []
-        wl_incrementor = []
-
-        # First find the time frame that the weights were equilibrated
-        line_n = 0
-        for l in lines:
-            line_n += 1
-            if ' dt ' in l and self.dt is None:
-                self.dt = float(l.split('=')[1])
-
-            if 'n-lambdas' in l and self.N_states is None:
-                self.N_states = int(l.split('=')[1])
-
-            if 'lmc-stats' in l and self.fixed is None:
-                if l.split('=')[1].split()[0] == 'no':
-                    self.fixed = True
-                    break
-                else:
-                    self.fixed = False
-
-            if 'init-wl-delta' in l and self.init_wl is None:
-                self.init_wl = float(l.split('=')[1])
-
-            if 'Wang-Landau incrementor is' in l and not wl_incrementor:
-                wl_incrementor.append(self.init_wl)   # initial wl-incrementor
-
-            if 'weights are now: ' in l:
-                weights_line = l.split(':')
-                step.append(int(weights_line[0].split()[1]))
-                search_lines = lines[line_n + 1: line_n + 15]
-                for l_search in search_lines:
-                    if 'Wang-Landau incrementor is:' in l_search:
-                        wl_incrementor.append(float(l_search.split(':')[1]))
-
-            if 'Weights have equilibrated' in l:
-                self.equil = True
-                equil_last_step = l.split(':')[0].split()[1]
-                # the step that the weights are equilibrated
-                self.equil_time = float(equil_last_step) * self.dt   # units: ps
-                break
-
-        wl_incrementor = np.array(wl_incrementor)
-        time = np.array(step) * self.dt
-
-        return time, wl_incrementor
-
-    def truncate_dhdl(self, dhdl):
-        """
-        This function reads in a dhdl file, truncate the part that the weights are still equilibrating and save as a new file
-        """
-        prefix = dhdl.split('.xvg')[0]
-        out_name = prefix + '_truncated.xvg'
-        outfile = open(out_name, 'w')
-        with open(dhdl) as infile:
-            for line in infile:
-                if line[0] == '#' or line[0] == '@':
-                    outfile.write(line)
-                else:
-                    time = float(line.split()[0])
-                    if time > self.equil_time:
-                        outfile.write(line)
-
-    def state_time_data(self, dhdl, freq):
+    def get_state_time(self, dhdl, freq):
         """Reads a dhdl file to returns the data required for plotting a state-time plot.
         Also, estimate how long it was required for the system to visit all the intermediate
         staes, either before or after the weights were equilibrated.
@@ -180,7 +102,9 @@ class StateTimeAnalysis:
                 n = int(float(l.split()[1]))  # the state just visited
                 visited[n] = True
                 if all(visited) is True:
-                    # all returns True if all of the items are True
+                    # All the states had been sampled at least once
+                    # Note: all returns True if all of the items are True
+                    self.sample_all = True
                     visited = [False for i in range(self.N_states)]
                     visit_time.append(float(l.split()[0]) - visit_start)
                     visit_start = float(l.split()[0])
@@ -193,10 +117,58 @@ class StateTimeAnalysis:
 
         return time, state, visit_time
 
+    def plot_data(self, x, y, type, title, png_name, trnctd=False):
+        # Common tasks/settings
+        plt.figure()
+        if type == 'state-time':
+            x -= x[0]   # always shift to 0 (only has influence on truncated data)
+        plt.plot(x, y)
+        plt.title(title)
+        plt.minorticks_on
+        plt.grid(True)
+
+        if type == 'state-time':
+            if self.equil is True and self.fixed is False and trnctd is False:
+                plt.axvline(x=self.equil_time, color='k', linestyle='--', zorder=10, linewidth=1.2)
+            plt.xlabel('Time (ns)')
+            plt.ylabel('State')
+            plt.ylim([0, self.N_states])
+            plt.savefig(png_name)
+            plt.show()
+        elif type == 'visit-time':
+            plt.text(0, max(y) * 0.98, '(Number of times that all the states were sampled: %s)' %
+                     len(y), fontsize=9)
+            plt.xlabel('Simulation time (ns)')
+            plt.ylabel('Time required to sample all the states (ns)')
+            plt.savefig(png_name)
+            plt.show()
+
+        elif type == 'visit-wl':
+            plt.scatter(x, y, color='k')
+            plt.xscale('log')
+            plt.xlabel('Wang-Landau incrementor ($ k_{B} T$)')
+            plt.ylabel('Time required to sample all the states (ns)')
+            plt.savefig(png_name)
+            plt.show()
+
+    def truncate_dhdl(self, dhdl):
+        """
+        This function reads in a dhdl file, truncate the part that the weights are still equilibrating and save as a new file
+        """
+        prefix = dhdl.split('.xvg')[0]
+        out_name = prefix + '_truncated.xvg'
+        outfile = open(out_name, 'w')
+        with open(dhdl) as infile:
+            for line in infile:
+                if line[0] == '#' or line[0] == '@':
+                    outfile.write(line)
+                else:
+                    time = float(line.split()[0])
+                    if time > self.equil_time * 1000:
+                        outfile.write(line)
+
 
 def main():
-    time_needed = []
-    s0 = timer.time()
     args = initialize()
 
     if args.dhdl is None:
@@ -264,171 +236,141 @@ def main():
     print('The dhdl file(s) to be analyzed: %s.' % dhdl_str)
     if len(args.log) > 0:
         print('The log file(s) to be analyzed: %s.' % log_str)
-    
-    e0 = timer.time()
-    time_needed.append(e0 - s0)
 
     for i in range(len(args.dhdl)):
-        s1 = timer.time()
         result_str = '\nData analysis of the file %s and %s:' % (args.dhdl[i], args.log[i])
         print(result_str)
         print('=' * len(result_str))
 
-        STA = StateTimeAnalysis()
-        wl_time, wl_incrementor = STA.get_equil_info(args.log[i])
+        STA = StateTimeAnalysis(args.log[i])
+        # Note that STA inherits from EXE, which inherits from LogInfo
+        # By initiating STA, we can use all the attributes/functions in EXE and LogInfo
 
-        # Three possible cases to deal with
-        # Case 1: Fixed-weight simulation (result: one state-time plot)
-        # Case 2: Equilibrating-weight simulation
-        # Case 2-1: the weights were equilibrated at some point (truncation required, result: two state-time plots)
-        # Case 2-2: the weights had not been equilibrated (result: one state-time plot)
-        # All three cases output a figure of the whole (untruncated) simulation.
-        # Therefore, we first deal with the whole (untruncated) simulation.
+        if STA.fixed is True:     # Case 1: fixed-weight simulation (EXE.get_equil_info not needed)
+            # print out relevant info
+            print('This is a fixed-weight simulation.\n')
 
-        dhdl_file = args.dhdl[i]    # dhdl file to be analyzed
-        png_name = 'state_plot_%s_whole.png' % args.keyword[i]   # untruncated
-        time, state, visit = STA.state_time_data(dhdl_file, args.freq)
+            # state-time plot
+            title = 'Exploration of states as a function of time with fixed weights'
+            png_name = 'state_plot_%s_whole.png' % args.keyword[i]
+            time, state, visit = STA.get_state_time(args.dhdl[i], args.freq)
+            print('The length of the whole simulation: %6.3f ns.\n' % time[-1])
+            STA.plot_data(time, state, 'state-time', title, png_name)
 
-        # print out some info and decide the title of the plot
-        if STA.fixed is True:
-            title = 'Exploration of states as a function of time with fixed weights.'
-            print('Note: This is a fixed-weight simulation.\n')
-        else:
-            print('Note: This is non-fixed-weight simulation.\n')
-            title = 'Exploration of states as a function of time'
-            if STA.equil is True:
-                print('The weights were equilibrated at %5.3f ns (shown as the dash line in the figure).\n' %
-                      (STA.equil_time / 1000))
+            # visit-time plot
+            if not visit:
+                print('The system could not sample all the states during %s ns of simulation.\n' % time[-1])
             else:
-                print('The weights have not been equilibrate.\n')
-        print('The length of the whole simulation: %6.3f ns.\n' % time[-1])
+                # Figure 1: visit-time v.s. simulation time
+                title = None
+                png_name = 'visit_time_%s.png' % args.keyword[i]
+                simulation_time = np.array([sum(visit[:i + 1]) for i in range(len(visit))]) / 1000   # units: ns
+                STA.plot_data(simulation_time, visit, 'visit-time', title, png_name)
+                # No plot of visit-time v.s. wl-incrementor for fixed weight simulation
 
-        # Having all the data, we can plot the figures now.
-        # Start with the figure based on the whole (untruncated) simulation
-        plt.plot(time, state)
-        if STA.equil is True and STA.fixed is False:
-            plt.axvline(x=STA.equil_time / 1000, color='k', linestyle='--', zorder=10, linewidth=1.2)
-        plt.title(title)
-        plt.xlabel('Time (ns)')
-        plt.ylabel('State')
-        plt.minorticks_on()
-        plt.ylim([0, STA.N_states])
-        plt.grid(True)
-        plt.savefig(png_name)
-        e1 = timer.time()
-        time_needed.append(e1 - s1)
-        plt.show()
-
-        # Analysis of the time required to sample all the states
-        s2 = timer.time()
-        if not visit:
-            print('The system could not sample all the states during %s ns of simulation.\n' % time[-1])
-        else:
-            max_visit = max(visit)
-            max_visit_idx = visit.index(max_visit)
-            # Note: this is for the part before the weights were equilibrated
-            if STA.fixed is False and STA.equil is True:  # truncation required
-                print('Before the weights were equilibrated, the longest time required for the '
-                    'system to sample all the intermediate states is %s ns, which is from %s to %s ns.\n'
-                    % (str(max_visit / 1000), str(sum(visit[:max_visit_idx]) / 1000), str((sum(visit[:max_visit_idx]) + max_visit) / 1000)))
-            else:   # either fixed simulation or equilibrating simulation with non-equilibrated weights
+                max_visit = max(visit)
+                max_visit_idx = visit.index(max_visit)
                 print('In this simulation, the longest time required for the '
-                    'system to sample all the intermediate states is %s ns, which is from %s to %s ns.\n'
-                    % (str(max_visit / 1000), str(sum(visit[:max_visit_idx]) / 1000), str((sum(visit[:max_visit_idx]) + max_visit) / 1000)))
+                      'system to sample all the intermediate states is %s ns, which is from %s to %s ns.\n'
+                      % (str(max_visit / 1000), str(sum(visit[:max_visit_idx]) / 1000), str((sum(visit[:max_visit_idx]) + max_visit) / 1000)))
 
-            # plot the result!
-            simulation_time = np.array([sum(visit[:i + 1]) for i in range(len(visit))]) / 1000   # units: ns
-            plt.plot(simulation_time, np.array(visit) / 1000)
-            plt.text(0, max(visit) / 1000 * 0.98, '(Number of times that all the states were sampled: %s)' %
-                    len(visit), fontsize=9)
-            plt.xlabel('Simulation time (ns)')
-            plt.ylabel('Time required to sample all the states (ns)')
-            plt.minorticks_on()
-            plt.grid(True)
-            plt.savefig('visit_time_%s.png' % args.keyword[i])
-            e2 = timer.time()
-            time_needed.append(e2 -s2)
-            plt.show()
+        else:
+            # Then STA.get_equil_info is needed
+            STA = StateTimeAnalysis(args.log[i])   # inherit attributes from EXE
+            wl_time, wl_incrementor, _, _ = STA.get_equil_info(args.log[i])   # update attributes like equil_time
+            # Since STA inherits from EXE, instead of using STA.get_equil_info, we can use STA.get_equil_info
 
-        # If in the equilibrating weight simulation, the weights were equilibrated
-        # plot the 'visit-time' as a function of wl-incrementor
-        # First use the simulation time to find the corresponding wl-incrementor
-        if STA.fixed is False and STA.equil is True:
-            s3 = timer.time()
-            visit_wl = np.zeros(len(visit))
-            for j in range(len(visit)):
-                for k in range(len(wl_time)):
-                    if simulation_time[j] * 1000 > wl_time[k] and simulation_time[j] * 1000 < wl_time[k + 1]:
-                        visit_wl[j] = wl_incrementor[k]
-            plt.plot(visit_wl, np.array(visit) / 1000)
-            plt.scatter(visit_wl, np.array(visit) / 1000, color='k')
-            plt.xscale('log')
-            plt.xlabel('Wang-Landau incrementor ($ k_{B} T$)')
-            plt.ylabel('Time required to sample all the states (ns)')
-            plt.minorticks_on
-            plt.grid(True)
-            plt.savefig('visit_time_wl_%s.png' % args.keyword[i])
-            e3 = timer.time()
-            time_needed.append(e3 -s3)
-            plt.show()
+            # print out relevant info
+            print('This is a non-fixed-weight simulation.\n')   # EXE.get_equil_info needed
+            title_w = 'Exploration of states as a function of time'  # for the "whole simulation"
+            title_t = 'Exploration of states as a function of time with fixed weights'   # for post-equilibration
+            png_name_w = 'state_plot_%s_whole.png' % args.keyword[i]
+            png_name_t = 'state_plot_%s_truncated.png' % args.keyword[i]
 
-        if STA.fixed is False and STA.equil is True:   # then truncation is required
-            s4 = timer.time()
-            STA.truncate_dhdl(args.dhdl[i])
-            dhdl_trnctd = dhdl_trnctd = args.dhdl[i].split('.xvg')[0] + '_truncated.xvg'
-            png_trnctd = 'state_plot_%s_truncated.png' % args.keyword[i]
-            time_t, state_t, visit_t = STA.state_time_data(dhdl_trnctd, args.freq)
-            title_t = 'Exploration of states as a function of time with fixed weights.'
-            os.remove(dhdl_trnctd)
+            if STA.equil is True:   # Case 2-1: equilibrating weight simulation with wegiths equilibrated at some point
+                print('The weights were equilibrated at %5.3f ns (shown as the dash line in the figure).\n' % (STA.equil_time))
 
-            # figure based on the truncated data
-            if args.shift:
-                time_t -= time_t[0]
+                # First deal with the whole simulation
+                time, state, visit = STA.get_state_time(args.dhdl[i], args.freq)
+                STA.plot_data(time, state, 'state-time', title_w, png_name_w)
 
-            plt.plot(time_t, state_t)
-            plt.title(title_t)
-            plt.xlabel('Time (ns)')
-            plt.ylabel('State')
-            plt.minorticks_on()
-            plt.ylim([0, STA.N_states])
-            plt.grid(True)
-            plt.savefig(png_trnctd)
-            e4 =timer.time()
-            time_needed.append(e4 -s4)
-            plt.show()            
+                # Then, deal with the truncated file (post-equilibration)
+                STA.truncate_dhdl(args.dhdl[i])
+                dhdl_trnctd = args.dhdl[i].split('.xvg')[0] + '_truncated.xvg'
+                time_t, state_t, visit_t = STA.get_state_time(dhdl_trnctd, args.freq)
+                STA.plot_data(time_t, state_t, 'state-time', title_t, png_name_t, True)
 
-            # Analysis of the time required to sample all the states
-            # Note: this is for the part after the weights were equilibrated
-            if not visit_t:    # length = 0
-                s5 = timer.time()
-                fix_length = round((time[-1] - STA.equil_time / 1000), 3)
-                print('After the weights were equilibrated, the system could not sample all '
-                      'the states in the rest of the simulation, which was from %s to %s ns (length: %s ns).\n'
-                      % (str(round(STA.equil_time / 1000, 3)), str(time[-1]), str(fix_length)))
-                e5 = timer.time()
-                time_needed.append(e5 -s5)
+                # visit-time plot (both the whole simulation and the post-equilibration)
+                data = [visit, visit_t]
+                prefix = ['Before', 'After']
+                suffix = ['', '_truncated']
+
+                str1 = 'The system could not sample all the states during %s ns of simulation.\n' % time[-1]
+                fix_length = round((time[-1] - STA.equil_time), 3)
+                str2 = 'After the weights were equilibrated, the system could not sample all the states in the rest of the simulation, which was from %s to %s ns (length: %s ns).\n' % (
+                    str(round(STA.equil_time, 3)), str(time[-1]), str(fix_length))
+                msg_not_visit_all = [str1, str2]
+
+                for m in range(2):
+                    if not data[m]:
+                        print(msg_not_visit_all[m])
+                    else:
+                        max_visit = max(data[m])
+                        max_visit_idx = data[m].index(max_visit)
+                        msg_visit_all = '%s the weights were equilibrated, the longest time required for the system to sample all the intermediate states is %s ns, which is from %s to %s ns.\n' % (
+                            prefix[i], str(max_visit / 1000), str(sum(data[m][:max_visit_idx]) / 1000), str((sum(data[m][:max_visit_idx]) + max_visit) / 1000))
+
+                        print(msg_visit_all)
+                        # Figure 1: visit time v.s. simulation time
+                        title = None
+                        png_name = 'visit_time_%s%s.png' % (args.keyword[i], suffix[m])
+                        simulation_time = np.array([sum(data[m][:i + 1])
+                                                    for i in range(len(data[m]))]) / 1000   # units: ns
+                        STA.plot_data(simulation_time, np.array(data[m]) / 1000, 'visit-time', title, png_name)
+
+                        # Figure 2: visit time v.s. wl-incrementor
+                        visit_wl = np.zeros(len(data[m]))
+                        png_name_wl = 'visit_time_wl_%s%s.png' % (args.keyword[i], suffix[m])
+                        for j in range(len(data[i])):
+                            for k in range(len(wl_time)):
+                                if simulation_time[j] * 1000 > wl_time[k] and simulation_time[j] * 1000 < wl_time[k + 1]:
+                                    visit_wl[j] = wl_incrementor[k]
+                        STA.plot_data(visit_wl, np.array(data[i]) / 1000, 'visit-wl', title, png_name_wl)
+
             else:
-                s6 = timer.time()
-                max_visit_t = max(visit_t)
-                max_visit_idx_t = visit_t.index(max_visit_t)
-                print('After the weigths were equilibrated, the longest time required for the '
-                      'system to sample all the intermediate states is %s ns, which is from %s to %s ns.'
-                      % (str(max_visit_t / 1000), str(sum(visit_t[:max_visit_idx_t]) / 1000), str((sum(visit_t[:max_visit_idx_t]) + max_visit_t) / 1000)))
+                print('The weights have not been equilibrated.\n')
 
-                # plot the result!
-                simulation_time_t = np.array([sum(visit_t[:i + 1]) for i in range(len(visit_t))]) / 1000   # units: ns
-                plt.plot(simulation_time_t, np.array(visit_t) / 1000)
-                plt.text(0, max(visit_t) / 1000 * 0.98,
-                         '(Number of times that all the states were sampled: %s)' % len(visit_t), fontsize=9)
-                plt.xlabel('Simulation time (ns)')
-                plt.ylabel('Time required to sample all the states (ns)')
-                plt.minorticks_on()
-                plt.grid(True)
-                plt.savefig('')
-                e6 = timer.time('visit_time_%s.png' % args.keyword[i])
-                time_needed.append(e6- s6)
-                plt.show()
+                # state-time plot
+                title = 'Exploration of states as a function of time'
+                png_name = 'state_plot_%s_whole.png' % args.keyword[i]
+                time, state, visit = STA.get_state_time(args.dhdl[i], args.freq)
+                print('The length of the whole simulation: %6.3f ns.\n' % time[-1])
+                STA.plot_data(time, state, 'state-time', title, png_name)
 
-    print('%s file(s) (%s simulation(s)) analyzed.' % (len(args.log) * 2, len(args.log)))
-    print('Total time elapsed (including plotting): %s seconds.\n'
-          % sum(time_needed))
+                # visit-time plot
+                if not visit:
+                    print('The system could not sample all the states during %s ns of simulation.\n' % time[-1])
+                else:
+                    # Figure 1: visit-time v.s. simulation time
+                    title = None
+                    png_name = 'visit_time_%s.png' % args.keyword[i]
+                    simulation_time = np.array([sum(visit[:i + 1]) for i in range(len(visit))]) / 1000   # units: ns
+                    STA.plot_data(simulation_time, visit, 'visit-time', title, png_name)
+                    # No plot of visit-time v.s. wl-incrementor for fixed weight simulation
+
+                    max_visit = max(visit)
+                    max_visit_idx = visit.index(max_visit)
+                    print('In this simulation, the longest time required for the '
+                          'system to sample all the intermediate states is %s ns, which is from %s to %s ns.\n'
+                          % (str(max_visit / 1000), str(sum(visit[:max_visit_idx]) / 1000), str((sum(visit[:max_visit_idx]) + max_visit) / 1000)))
+
+                    # Figure 2: visit time v.s. wl-incrementor
+                    visit_wl = np.zeros(len(visit))
+                    png_name_wl = 'visit_time_wl_%s.png' % (args.keyword[i])
+                    for j in range(len(visit)):
+                        for k in range(len(wl_time)):
+                            if simulation_time[j] * 1000 > wl_time[k] and simulation_time[j] * 1000 < wl_time[k + 1]:
+                                visit_wl[j] = wl_incrementor[k]
+                    STA.plot_data(visit_wl, np.array(data[i]) / 1000, 'visit-wl', title, png_name_wl)
+
+        print('%s file(s) (%s simulation(s)) analyzed.' % (len(args.log) * 2, len(args.log)))

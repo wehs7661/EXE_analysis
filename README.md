@@ -26,8 +26,8 @@ pip install -e .
 - Wildcards are available. Therefore, say that there are only two log files in the current folder, including `solvent_0.log` and `solvent_1.log`, to perform data analysis on both files, we can run either `EXE_histogram -l solvent_*.log` or `EXE_histogram -l *.log` (or `EXE_histogram` or `EXE_histogram -l solvent_0.log solvent_1.log` without using wildcards). If the weights were equilibrated in both simulations, then 6 figures will be generated.
 
 - Sample STDOUT message as the output of data analysis performed on both `solvent_0.log` and `solvent_1.log`:
-```wrap
-The log files to be analyzed: solvent_0.log, and solvent_1.log.
+```
+The log file(s) to be analyzed: solvent_0.log, and solvent_1.log.
 Length of the simulation for the weights average calculation: 20 ns.
 
 Data analysis of the file solvent_0.log:
@@ -58,13 +58,13 @@ The final weights are:
 The average weights of the last 20 ns of the simulation before the weights are equilibrated (from 30.866 to 50.866 ns) are:
   0.0 14.64105 28.54121 41.76535 54.25945 66.08005 77.21117 87.55368 97.19715 106.09082 114.29638 121.77106 128.55119 134.60321 140.06286 144.82714 149.00974 152.61477 155.64057 158.26884 160.41002 161.40118 162.33332 163.13015 163.71199 163.96416 164.08451 164.09988 163.98061 163.81325 163.52252 163.01236 162.4054 161.54296 160.49669 159.40129 158.34479 157.25842 156.47471 155.92581 
 
-2 files analyzed.
+2 file(s) analyzed.
 Total time elapsed (including plotting): 20.138840436935425 seconds.
 ```
 
 - Sample figures as the output of data analysis performed on `solvent_0.log`:
-<img src="EXE_analysis/examples/WL_t_complex_0.png" width="400"/> <br/>
-<img src="EXE_analysis/examples/Equil_hist_55ns_solvent_0.png" width="400"/> <img src="EXE_analysis/examples/Final_hist_114ns_complex_0.png" width="400"/>
+<img src="EXE_analysis/examples/WL_t_solvent_0.png" width="400"/> <br/>
+<img src="EXE_analysis/examples/Equil_hist_55ns_solvent_0.png" width="400"/> <img src="EXE_analysis/examples/Final_hist_114ns_solvent_0.png" width="400"/>
 
 ### 2. `EXE_state_plot.py`: Data analysis of the exploration of the state
 - To check the inputs, ouputs and the description of the code, run `EXE_state_plot -h`.

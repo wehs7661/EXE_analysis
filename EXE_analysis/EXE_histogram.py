@@ -51,7 +51,8 @@ def initialize():
                         help='The length of the simulation that the calculation \
                             of average weights are based on. -a 20 means that the \
                             weights of last 20 ns before the weights are eauilibrated\
-                            will be averaged. Default: 20 ns.')
+                            will be averaged. Default: 20 ns. If multiple files are\
+                            given, the same value applies to all.')
 
     args_parse = parser.parse_args()
 
@@ -182,7 +183,6 @@ class EXEAnalysis(LogInfo):
                 search_lines = lines[line_n + 1: line_n + 15]
                 # the info of the incrementor typically appears in
                 # line line_n + 15 but it depends
-
                 for l_search in search_lines:
                     if 'Wang-Landau incrementor is:' in l_search:
                         wl_incrementor.append(float(l_search.split(':')[1]))
@@ -231,7 +231,7 @@ class EXEAnalysis(LogInfo):
                 # Note: avg_end will not be taken into account in the average calculation
                 avg_endstep = int(equil_step) - (int(equil_step) % self.nstlog) + self.nstlog
                 self.avg_end = avg_endstep * self.dt   # units: ps
-                
+
                 break
 
         # ========== 3. Exit if the weights have not equilibrated ============
@@ -257,7 +257,8 @@ class EXEAnalysis(LogInfo):
         err_kcal = err_kt * (kb * Na * float(self.temp) / 1000) * 0.23900573613
         print('The uncertainty of the free energy difference is %5.3f kT.\n'
               % err_kt)
-        print('Or at the simulation temperature (%s K), the uncertainty is %5.3f kcal/mol\n' % (str(float(self.temp)), err_kcal))
+        print('Or at the simulation temperature (%s K), the uncertainty is %5.3f kcal/mol\n' %
+              (str(float(self.temp)), err_kcal))
 
         return time, wl_incrementor, final_weights, equil_counts
 
@@ -294,7 +295,7 @@ class EXEAnalysis(LogInfo):
         # collect the data of weights to be averaged
         for l in lines[self.start:]:    # skip the metadata
             line_n += 1
-            if str(self.avg_start) in l: 
+            if str(self.avg_start) in l:
                 search_start = True
 
             if 'Wang-Landau incrementor is:' in l and search_start is True:
@@ -305,7 +306,7 @@ class EXEAnalysis(LogInfo):
 
             if str(self.avg_end) in l:
                 break
-        
+
         # Average the weights
         list_sum = 0
         weights_all = np.array(weights_all)
@@ -387,21 +388,17 @@ def main():
         else:
             args.log = natsort.natsorted(args.log)
 
-    if isinstance(args.log, str):                # the case of only one input
-        args.log = list(args.log)
     if isinstance(args.log, str) and '*' in args.log:  # to enables wildcards
         args.log = natsort.natsorted(glob.glob(args.log), reverse=False)
-    if isinstance(args.keyword, str):
-        args.keyword = list(args.keyword)
 
-    # Check if the default should be used
+    # Check if the default keyword should be used
     if args.keyword is None:
         args.keyword = [logname.split('.')[0] for logname in args.log]
 
     log_str = ''
     for i in range(len(args.log)):
         if i == 0:
-            log_str += args.log[i]         
+            log_str += args.log[i]
         elif i != len(args.log) - 1:
             log_str += ', '
             log_str += args.log[i]
@@ -410,7 +407,7 @@ def main():
             log_str += args.log[i]
 
     print('\n')
-    print('The log files to be analyzed: %s.' % log_str)
+    print('The log file(s) to be analyzed: %s.' % log_str)
     print('Length of the simulation for the weights average calculation: %s ns.\n' % args.avg_len)
     e0 = timer.time()
     time_needed.append(e0 - s0)
@@ -447,6 +444,7 @@ def main():
             plt.step(time, wl_incrementor)
             plt.xlabel('Time (ns)')
             plt.ylabel('Wang-Landau incrementor ($ k_{B} T$)')
+            plt.minorticks_on()
             plt.title('Wang-Landau incrementor as a function of time')
             plt.grid()
             plt.savefig('WL_t_%s.png' % args.keyword[i], dpi=600)
@@ -463,6 +461,7 @@ def main():
             plt.bar(np.arange(1, log_info.N_states + 1), height=equil_counts)
             plt.xlabel('States')
             plt.ylabel('Counts')
+            plt.minorticks_on()
             plt.title('The equilibrated histogram of the simulation (%s ns)' % etime_title)
             if max(equil_counts) >= 10000:
                 plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
@@ -475,7 +474,7 @@ def main():
         s5 = timer.time()
         if log_info.fixed is True:
             print('This is a fixed-weight expanded ensemble simulation.')
-            print('Accordingly, only the final histogram will be output and saved.')
+            print('Accordingly, only the final histogram will be output and saved.\n')
         # Extract the final counts for plotting the final histogram, no matter
         # the weights are fixed during the simulation
         final_time, final_counts = EXE.get_final_counts(args.log[i])
@@ -489,6 +488,7 @@ def main():
         plt.bar(np.arange(1, log_info.N_states + 1), height=final_counts)
         plt.xlabel('States')
         plt.ylabel('Counts')
+        plt.minorticks_on()
         plt.title('The final histogram of the simulation (at %s ns)' % ftime_title)
         if max(final_counts) >= 10000:
             plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
@@ -497,16 +497,18 @@ def main():
         e5 = timer.time()
         time_needed.append(e5 - s5)
         plt.show()
+
         
-        s6 = timer.time()
         # Average weights calculation
-        weights_a = EXE.get_avg_weights(args.log[i], args.avg_len)
-        print('The average weights of the last %s ns' % str(args.avg_len), 
-        'of the simulation before the weights are equilibrated (from %s to %s ns) are:\n' 
-        %(str(EXE.avg_start / 1000), str(EXE.avg_end / 1000) ), weights_a, '\n')
-        e6 = timer.time()
-        time_needed.append(e6 - s6)
-        
-    print('%s files analyzed.' % len(args.log))
+        if log_info.fixed is False and EXE.equil is True:
+            s6 = timer.time()
+            weights_a = EXE.get_avg_weights(args.log[i], args.avg_len)
+            print('The average weights over the last %s ns' % str(args.avg_len),
+                'of the simulation before the weights are equilibrated (from %s to %s ns) are:\n'
+                % (str(EXE.avg_start / 1000), str(EXE.avg_end / 1000)), weights_a, '\n')
+            e6 = timer.time()
+            time_needed.append(e6 - s6)
+
+    print('%s file(s) analyzed.' % len(args.log))
     print('Total time elapsed (including plotting): %s seconds.\n'
-              % sum(time_needed))
+          % sum(time_needed))
