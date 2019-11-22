@@ -374,3 +374,4 @@ def main():
                     STA.plot_data(visit_wl, np.array(data[i]) / 1000, 'visit-wl', title, png_name_wl)
 
         print('%s file(s) (%s simulation(s)) analyzed.' % (len(args.log) * 2, len(args.log)))
+
