@@ -1,0 +1,167 @@
+; NOTE - as written, this will only run in double.  Lines that need to be changed
+; to run in single precision are noted with alternates noted by SINGLE PRECISION
+; RUN CONTROL PARAMETERS = 
+integrator               = md-vv
+; start time and timestep in ps = 
+tinit                    = 0
+dt                       = 0.002
+
+; 20 ns.  Somewhat arbitrarily chosen.  Remember this is divided between all the states
+nsteps               = 10000000
+; mode for center of mass motion removal = 
+
+; We remove center of mass motion.  In periodic boundary conditions, the center of mass motion is spurious; the periodic system is the same in all translational directions.
+comm-mode                = Linear
+; number of steps for center of mass motion removal = 
+nstcomm                  = 1
+
+; Output frequency for energies to log file and energy file = 
+nstlog                   = 1000
+nstenergy                = 100
+nstcalcenergy            = 1 
+
+; NEIGHBORSEARCHING PARAMETERS = 
+; nblist update frequency = 
+nstlist                  = 10
+; ns algorithm (simple or grid) = 
+ns_type                  = grid
+; Periodic boundary conditions: xyz or no = 
+pbc                      = xyz
+
+; Neighbor list should be at least 2 A greater than the either rcut or rvdw
+
+; nblist cut-off         = 
+rlist                    = 1.15
+
+; OPTIONS FOR ELECTROSTATICS AND VDW: These parameters were all optimized for fast and accurate small molecule calculations.
+; See Shirts and Paliwal (2011)
+
+; Method for doing electrostatics = 
+coulombtype              = PME-Switch
+rcoulomb-switch          = 0.88
+rcoulomb                 = 0.9
+
+; Method for doing Van der Waals = 
+vdw-type                 = Switch
+; cut-off lengths        = 
+rvdw-switch              = 0.85
+rvdw                     = 0.9
+; Spacing for the PME/PPPM FFT grid = 
+fourierspacing           = 0.12
+; EWALD/PME/PPPM parameters = 
+pme_order                = 4
+ewald_rtol               = 1e-04
+ewald_geometry           = 3d
+epsilon_surface          = 0
+
+; Apply long range dispersion corrections for Energy and Pressure = 
+DispCorr                 = EnerPres
+
+---------------
+; Slow temperature and pressure coupling that won't disturb the dynamics too much.  MTTK
+; gives very close to accurate volume distributions (Shirts, JCTC 2012)
+---------------
+
+; Groups to couple separately = 
+tc-grps                  = System
+; Time constant (ps) and reference temperature (K) = 
+tcoupl                   = v-rescale
+tau_t                    = 0.1 ; can increase stability for smaller ligands to have a low tau_t 
+ref_t                    = 300
+nsttcouple               = 1 ; can increase stability for smaller ligands 
+; Pressure coupling      = 
+Pcoupl                   = Berendsen
+; Time constant (ps), compressibility (1/bar) and reference P (bar) = 
+tau_p                    = 5.0
+compressibility          = 4.5e-5
+ref_p                    = 1.01325
+nstpcouple               = 1 ; can increase stability for smaller ligands  
+
+; We don't strictly need these, because it already has velocities
+; that are at the right temperature.  But including this is safer.
+----------
+gen_vel                  = yes
+gen_temp                 = 300
+gen_seed                 = 12  ; make sure you set the seed to be able to reproduce the simulation
+
+
+; constrain the hydrogen bonds, allowing longer timesteps.
+; We are running with MTTK, so we use shake
+; the constraints are obeyed to high precision; it's not that expensive.
+constraints              = hbonds
+; Type of constraint algorithm = 
+constraint-algorithm     = lincs
+lincs-order              = 12
+lincs-iter               = 2
+
+;--------------------
+; Free energy parameters
+; Use expanded ensemble methods
+free-energy              = expanded
+sc-power                 = 1  
+sc-alpha                 = 0.5
+sc-r-power               = 6
+; These parameters above describe a moderately efficient 
+; path for small molecule solvation.  For DOUBLE PRECISION, 
+; the choices below are somewhat more efficient
+;--------
+;sc-power                 = 1  
+;sc-alpha                 = 0.001  
+;sc-r-power               = 48
+;-------
+
+; Which intermediate state do we start with?  Doesn't really matter, it leaves soon
+-------
+init-lambda-state        = 0  
+
+; What are the values of lambda at the intermediate states?
+;------- 
+coul-lambdas             = 0.0 0.2 0.5 1.0 1.0 1.0 1.0 1.0 1.0
+vdw-lambdas              = 0.0 0.0 0.0 0.0 0.2 0.4 0.6 0.8 1.0 
+
+; This makes sure we print out the differences in Hamiltonians between all states, and not just the neighboring states
+;--------
+calc-lambda-neighbors = -1
+
+; the frequency the free energy information is calculated.  This 
+; frequency (every 0.2 ps) is pretty good for small molecule solvation.
+;-------
+nstdhdl                  = 100 
+
+; not required, but useful if you are doing any temperature reweighting.  Without 
+; temperature reweighting, you don't need the total energy -- differences are enough
+dhdl-print-energy        = yes
+
+; We are doing free energies with the ethanol molecule alone
+couple-moltype           = Ethanol
+; we are changing both the  vdw and the charge.  In the initial state, both are on
+couple-lambda0           = vdw-q
+; in the final state, both are off.
+couple-lambda1           = none
+; we are keeping the intramolecular interactions ON in all the interactions from state 0 to state 8
+couple-intramol          = no
+
+; expanded ensemble Parameters.  
+; every 100 steps, we try switch between the intermediate states.
+nstexpanded              = 100
+; Wang-Landau algorithm to determine the free energies 'weights' of the states
+lmc-stats                = wang-landau
+; Metropolized gibbs algorithm to move between states
+lmc-move                 = metropolized-gibbs
+; we stop equilibrating when the wang-landau scaling term gets as low as 0.001
+lmc-weights-equil        = wl-delta
+weight-equil-wl-delta    = 0.001
+
+; Seed for Monte Carlo in lambda space
+; We scale our wang landau weight by 0.7, whenever the smallest state 
+; and largest state have ratio of 0.8.  The initial wang-landau weight 
+; increment delta is 1 kbT, and when this delta<1/N, where N is the 
+; number of attempted switches in state space, we use 1/N as the delta, 
+; which is less prone to saturation (stopping at the wrong value because 
+; the weight schedule lowered too quickly).
+;
+;
+wl-scale                 = 0.7
+wl-ratio                 = 0.8
+init-wl-delta            = 1.0
+wl-oneovert              = yes
