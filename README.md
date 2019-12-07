@@ -88,7 +88,7 @@ The average weights of the last 20 ns of the simulation before the weights are e
 Total time elapsed (including plotting): 20.138840436935425 seconds.
 ```
 
-### 3. `EXE_state_plot.py`: Data analysis of the exploration of the state
+### 3. `EXE_state_plot.py`: Data analysis of the exploration of states
 - To check the inputs, ouputs and the description of the code, run `EXE_state_plot -h`.
 - To use `EXE_state_plot.py`, at least a `.log` file and a `.dhdl` file are required.
 - Similar to `EXE_histogram.py`, `EXE_state_plot.py` is able to search `.log` files and their corresponding `.dhdl` file if no parameters are specified. Wildcards are also available. Therefore, the program can be invoked by commands such as `EXE_state_plot`, `EXE_state_plot -i ethanol_*_dhdl.xvg -l ethanol_*.log`, `EXE_state_plot -i *_dhdl.xvg -l *.log`, or `EXE_state_plot -i ethanol_0_dhdl.xvg ethanol_1_dhdl.xvg -l ethanol_0.log ethanol_1.log`.
@@ -137,7 +137,7 @@ To get more realized about the theory and the implmentation of expanded ensemble
 
 ## Copyright
 
-Copyright (c) 2019, Wei-Tse Hsu
+Copyright (c) 2019, Wei-Tse Hsu ([wehs7661@colorado.edu]())
 
 ## Acknowledgements
  
