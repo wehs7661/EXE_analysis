@@ -7,7 +7,7 @@ tinit                    = 0
 dt                       = 0.002
 
 ; 20 ns.  Somewhat arbitrarily chosen.  Remember this is divided between all the states
-nsteps               = 10000000
+nsteps               = 2500000    ; 5000 ps
 ; mode for center of mass motion removal = 
 
 ; We remove center of mass motion.  In periodic boundary conditions, the center of mass motion is spurious; the periodic system is the same in all translational directions.
