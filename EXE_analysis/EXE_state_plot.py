@@ -277,7 +277,7 @@ def main():
         else:
             # Then STA.get_equil_info is needed
             STA = StateTimeAnalysis(args.log[i])   # inherit attributes from EXE
-            wl_time, wl_incrementor, _, _ = STA.get_equil_info(args.log[i])   # update attributes like equil_time
+            wl_time, wl_incrementor, _, _, _, _ = STA.get_equil_info(args.log[i])   # update attributes like equil_time
             # Since STA inherits from EXE, instead of using STA.get_equil_info, we can use STA.get_equil_info
 
             # print out relevant info
@@ -331,11 +331,15 @@ def main():
                         # Figure 2: visit time v.s. wl-incrementor
                         visit_wl = np.zeros(len(data[m]))
                         png_name_wl = 'visit_time_wl_%s%s.png' % (args.keyword[i], suffix[m])
-                        for j in range(len(data[i])):
+                        for j in range(len(data[m])):
                             for k in range(len(wl_time)):
-                                if simulation_time[j] * 1000 > wl_time[k] and simulation_time[j] * 1000 < wl_time[k + 1]:
-                                    visit_wl[j] = wl_incrementor[k]
-                        STA.plot_data(visit_wl, np.array(data[i]) / 1000, 'visit-wl', title, png_name_wl)
+                                if k == len(wl_time) - 1:
+                                    if simulation_time[j] * 1000 > wl_time[k]:
+                                        visit_wl[j] = wl_incrementor[k]
+                                else:
+                                    if simulation_time[j] * 1000 > wl_time[k] and simulation_time[j] * 1000 < wl_time[k + 1]:
+                                        visit_wl[j] = wl_incrementor[k]
+                        STA.plot_data(visit_wl, np.array(data[m]) / 1000, 'visit-wl', title, png_name_wl)
 
             else:
                 print('The weights have not been equilibrated.\n')
