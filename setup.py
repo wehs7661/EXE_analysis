@@ -49,7 +49,8 @@ setup(
         'console_scripts':[
             'EXE_state_plot = EXE_analysis.EXE_state_plot:main',
             'EXE_histogram = EXE_analysis.EXE_histogram:main',
-            'EXE_iteration = EXE_analysis.EXE_iteration:main'
+            'EXE_iteration = EXE_analysis.EXE_iteration:main',
+            'EXE_dHdL = EXE_analysis.EXE_dHdL:main'
         ],
     },
     install_requires=['natsort'],

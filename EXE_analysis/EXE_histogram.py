@@ -243,9 +243,7 @@ class EXEAnalysis(LogInfo):
                                 equil_counts.append(float(lines[search_n + 2 + i].split()[-4]))
                             else:
                                 equil_counts.append(float(lines[search_n + 2 + i].split()[-3]))
-
-                wl_incrementor = np.array(wl_incrementor)
-                time = np.array(step) * self.dt  # time array for plotting
+                
                 self.equil_time = float(equil_step) * self.dt / 1000  # units: ns
 
                 # Note: avg_end will not be taken into account in the average calculation
@@ -254,52 +252,56 @@ class EXEAnalysis(LogInfo):
 
                 break
 
+        time = np.array(step) * self.dt  # time array for plotting
+        wl_incrementor = np.array(wl_incrementor)
+
         # ========== 3. Exit if the weights have not equilibrated ============
-        if self.equil is False:
+        if self.fixed is False and self.equil is False:
             N_update = int(np.ceil(np.log(self.cutoff / wl_incrementor[-1]) /
                                    np.log(self.wl_scale)))
             print('The weights have not equilibrated.')
-            print('The last time frame that the Wang-Landau increTotal time \
-                requiedmentor was updated (%5.3f ns) is %s.' %
+            print('The last time frame that the Wang-Landau incrementor was updated (%5.3f ns) is %s.' %
                   (time[-1] / 1000, str(wl_incrementor[-1])))
-            print('The Wang-Landau scale and the cutoff of Wang-Landau \
-                incrementor are %s and %s, respectively.' %
-                  (str(self.wl_scale), str(self.wl_cutoff)))
-            print('Therefore, it requires %s more updates in Wang-Landau \
-                incrementor for the weights to be equilibrated.' % N_update)
+            print('The Wang-Landau scale and the cutoff of Wang-Landau incrementor are %s and %s, respectively.' %
+                  (str(self.wl_scale), str(self.cutoff)))
+            print('Therefore, it requires %s more updates in Wang-Landau incrementor for the weights to be equilibrated.' % N_update)
             print('Check the log file for more information.')
-            sys.exit()
+            return time, wl_incrementor
+            #sys.exit()
 
         # ================== 4. Additional information =======================
-        avg_counts = sum(equil_counts) / len(equil_counts)
-        self.max_Nratio = max(equil_counts) / avg_counts
-        self.min_Nratio = min(equil_counts) / avg_counts
+        if self.equil is True:
+            avg_counts = sum(equil_counts) / len(equil_counts)
+            self.max_Nratio = max(equil_counts) / avg_counts
+            self.min_Nratio = min(equil_counts) / avg_counts
 
         # ==================== 5. Weights adjustment =========================
         # Formula: g'_k = g_k + ln(count_(k - 1) / count_k)
-        weights_list = [float(final_weights.split()[i]) for i in range(len(final_weights.split()))]
-        weights_adjstd = np.zeros(len(weights_list))
-        wght_adjstd_str = ''
-        for i in range(len(weights_list)):
-            if i == 0:
-                weights_adjstd[i] = 0
-                wght_adjstd_str += '0.00000 ' 
-            else:
-                weights_adjstd[i] = weights_list[i] + np.log(equil_counts[i - 1] / equil_counts[i])
-                wght_adjstd_str += '%6.5f ' % weights_adjstd[i] 
-        RMSD = np.sqrt((1/len(weights_list) * sum((np.array(weights_list) - weights_adjstd) ** 2)))
+        if self.equil is True:    
+            weights_list = [float(final_weights.split()[i]) for i in range(len(final_weights.split()))]
+            weights_adjstd = np.zeros(len(weights_list))
+            wght_adjstd_str = ''
+            for i in range(len(weights_list)):
+                if i == 0:
+                    weights_adjstd[i] = 0
+                    wght_adjstd_str += '0.00000 ' 
+                else:
+                    weights_adjstd[i] = weights_list[i] + np.log(equil_counts[i - 1] / equil_counts[i])
+                    wght_adjstd_str += '%6.5f ' % weights_adjstd[i] 
+            RMSD = np.sqrt((1/len(weights_list) * sum((np.array(weights_list) - weights_adjstd) ** 2)))
 
         # =================== 6. Uncertainty estimation ======================
         kb = 1.38064852E-23                               # Boltzmann constant
         Na = 6.0221409E23                                 # Avogadro's number
-        err_kt = np.abs(np.log(equil_counts[0] / equil_counts[-1]))
-        err_kcal = err_kt * (kb * Na * float(self.temp) / 1000) * 0.23900573613
-        print('The uncertainty of the free energy difference is %5.3f kT.\n'
-              % err_kt)
-        print('Or at the simulation temperature (%s K), the uncertainty is %5.3f kcal/mol\n' %
-              (str(float(self.temp)), err_kcal))
+        if self.equil is True:
+            err_kt = np.abs(np.log(equil_counts[0] / equil_counts[-1]))
+            err_kcal = err_kt * (kb * Na * float(self.temp) / 1000) * 0.23900573613
+            print('The uncertainty of the free energy difference is %5.3f kT.\n'
+                % err_kt)
+            print('Or at the simulation temperature (%s K), the uncertainty is %5.3f kcal/mol\n' %
+                (str(float(self.temp)), err_kcal))
 
-        return time, wl_incrementor, final_weights, equil_counts, RMSD, wght_adjstd_str
+        return time, wl_incrementor #, final_weights, equil_counts, RMSD, wght_adjstd_str
 
     def get_avg_weights(self, logfile, avg_len):
         """
@@ -434,8 +436,8 @@ def main():
             print('No log files found! Please check if the directory is correct or specify the name of the log files.')
         else:
             args.log = natsort.natsorted(args.log)
-        if len(args.log) == 1:
-            gen_mdp = True
+        #if len(args.log) == 1:
+        #    gen_mdp = True
 
     if isinstance(args.log, str) and '*' in args.log:  # to enables wildcards
         args.log = natsort.natsorted(glob.glob(args.log), reverse=False)
@@ -471,8 +473,8 @@ def main():
         EXE = EXEAnalysis(args.log[i])
         e1 = timer.time()
         time_needed.append(e1 - s1)
-
-        if log_info.fixed is False:
+        
+        if log_info.fixed is False and EXE.equil is True:
             s2 = timer.time()
             [time, wl_incrementor, weights_f, equil_counts, RMSD, wght_adjstd_str] = EXE.get_equil_info(args.log[i])
             # If the weights are not equilibrated, the code temrinates here.
@@ -529,28 +531,33 @@ def main():
         if log_info.fixed is True:
             print('This is a fixed-weight expanded ensemble simulation.')
             print('Accordingly, only the final histogram will be output and saved.\n')
-        # Extract the final counts for plotting the final histogram, no matter
-        # the weights are fixed during the simulation
-        final_time, final_counts = EXE.get_final_counts(args.log[i])
-        final_time /= 1000    # from ps to ns
-        ftime_title = str(round(final_time, 1))  # 1st decimal point
-        ftime_png = str(int(round(final_time, 0)))    # round to integer
-        # the keyword corresponding to the final time in the filename of png
+        
+        if EXE.equil is False:
+            EXE.get_equil_info(args.log[i])
 
-        # Plot the final histogram
-        plt.figure()
-        plt.bar(np.arange(1, log_info.N_states + 1), height=final_counts)
-        plt.xlabel('States')
-        plt.ylabel('Counts')
-        plt.minorticks_on()
-        plt.title('The final histogram of the simulation (at %s ns)' % ftime_title)
-        if max(final_counts) >= 10000:
-            plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
-        plt.grid()
-        plt.savefig('Final_hist_%sns_%s.png' % (ftime_png, args.keyword[i]), dpi=600)
-        e5 = timer.time()
-        time_needed.append(e5 - s5)
-        plt.show()
+        if log_info.fixed is False and EXE.equil is True or log_info.fixed is True:
+            # Extract the final counts for plotting the final histogram, no matter
+            # the weights are fixed during the simulation
+            final_time, final_counts = EXE.get_final_counts(args.log[i])
+            final_time /= 1000    # from ps to ns
+            ftime_title = str(round(final_time, 1))  # 1st decimal point
+            ftime_png = str(int(round(final_time, 0)))    # round to integer
+            # the keyword corresponding to the final time in the filename of png
+
+            # Plot the final histogram
+            plt.figure()
+            plt.bar(np.arange(1, log_info.N_states + 1), height=final_counts)
+            plt.xlabel('States')
+            plt.ylabel('Counts')
+            plt.minorticks_on()
+            plt.title('The final histogram of the simulation (at %s ns)' % ftime_title)
+            if max(final_counts) >= 10000:
+                plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
+            plt.grid()
+            plt.savefig('Final_hist_%sns_%s.png' % (ftime_png, args.keyword[i]), dpi=600)
+            e5 = timer.time()
+            time_needed.append(e5 - s5)
+            plt.show()
 
         
         # Average weights calculation
