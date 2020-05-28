@@ -53,6 +53,19 @@ def initialize():
                             weights of last 20 ns before the weights are eauilibrated\
                             will be averaged. Default: 20 ns. If multiple files are\
                             given, the same value applies to all.')
+    parser.add_argument('-m',
+                        '--mdp',
+                        type=str,
+                        help='The .mdp file as the basis of the newly generated .mdp\
+                            file for the fixed-weight simulation. Note that a new .mdp\
+                            file will be generated only if there were only one log\
+                            file provided and the weights had been equilibrated.')
+    parser.add_argument('-w',
+                        '--weights',
+                        type=str,
+                        choices=['equilibrated', 'adjusted', 'average'],
+                        default='adjusted',
+                        help='Which kind of weights to be used in the new .mdp file.')
 
     args_parse = parser.parse_args()
 
@@ -75,8 +88,9 @@ class LogInfo:
         f.close()
 
         self.dt, self.cutoff, self.wl_scale, self.N_states, self.fixed, \
-            self.init_wl, self.temp, self.start, self.nstlog = None, None, \
-            None, None, None, None, None, None, None
+            self.init_wl, self.temp, self.start, self.nstlog, self.wl_ratio = None, None, \
+            None, None, None, None, None, None, None, None
+        self.init_w = []
         line_n = 0
 
         for l in lines:
@@ -89,6 +103,9 @@ class LogInfo:
 
             if 'weight-equil-wl-delta' in l and self.cutoff is None:
                 self.cutoff = float(l.split('=')[1])
+
+            if 'wl-ratio' in l and self.wl_ratio is None:
+                self.wl_ratio = float(l.split('=')[1])
 
             if 'wl-scale' in l and self.wl_scale is None:
                 self.wl_scale = float(l.split('=')[1])
@@ -108,6 +125,9 @@ class LogInfo:
             if 'ref-t' in l and self.temp is None:
                 self.temp = l.split(':')[1]
 
+            if 'init-lambda-weights[' in l:
+                self.init_w.append(float(l.split('=')[1]))
+
             if 'Started mdrun' in l:
                 self.start = line_n
                 # the line number that the simulation got started
@@ -125,6 +145,8 @@ class EXEAnalysis(LogInfo):
         """
         self.equil = False  # for examining if weights are equilibrated
         self.equil_time = None
+        self.max_Nratio = None   # To examine the flatness of the histogram
+        self.min_Nratio = None   # To examine the flatness of the histogram 
         self.avg_start = None  # the starting piont of the weights average calculation
         self.avg_end = None   # the endpoint time frame of weights average calculation
         LogInfo.__init__(self, logfile)
@@ -221,11 +243,11 @@ class EXEAnalysis(LogInfo):
                     if 'MC-lambda information' in l_search:
                         for i in range(self.N_states):
                             # start from lines[search_n + 2]
-                            equil_counts.append(float(lines[search_n + 2 + i].
-                                                      split()[5]))
-
-                wl_incrementor = np.array(wl_incrementor)
-                time = np.array(step) * self.dt  # time array for plotting
+                            if lines[search_n + 2 + i].split()[-1] == '<<':
+                                equil_counts.append(float(lines[search_n + 2 + i].split()[-4]))
+                            else:
+                                equil_counts.append(float(lines[search_n + 2 + i].split()[-3]))
+                
                 self.equil_time = float(equil_step) * self.dt / 1000  # units: ns
 
                 # Note: avg_end will not be taken into account in the average calculation
@@ -234,33 +256,65 @@ class EXEAnalysis(LogInfo):
 
                 break
 
-        # ========== 3. Exit if the weights have not equilibrated ============
-        if self.equil is False:
-            N_update = int(np.ceil(np.log(self.cutoff / wl_incrementor[-1]) /
-                                   np.log(self.wl_scale)))
-            print('The weights have not equilibrated.')
-            print('The last time frame that the Wang-Landau increTotal time \
-                requiedmentor was updated (%5.3f ns) is %s.' %
-                  (time[-1] / 1000, str(wl_incrementor[-1])))
-            print('The Wang-Landau scale and the cutoff of Wang-Landau \
-                incrementor are %s and %s, respectively.' %
-                  (str(self.wl_scale), str(self.wl_cutoff)))
-            print('Therefore, it requires %s more updates in Wang-Landau \
-                incrementor for the weights to be equilibrated.' % N_update)
-            print('Check the log file for more information.')
-            sys.exit()
+        time = np.array(step) * self.dt  # time array for plotting
+        wl_incrementor = np.array(wl_incrementor)
 
-        # =================== 4. Uncertainty estimation ======================
+        # ========== 3. Exit if the weights have not equilibrated ============
+        if self.fixed is False and self.equil is False:
+            N_updated = int(np.log(wl_incrementor[-1] / self.init_wl) / np.log(self.wl_scale))
+            N_update = int(np.ceil(np.log(self.cutoff / wl_incrementor[-1]) /
+                                   np.log(self.wl_scale)))  # number of updates required
+            _, _ = self.get_final_counts(logfile)  # to get self.final_w
+            diff_w = np.array(self.final_w) - np.array(self.init_w)
+            diff_w = [round(x, 2) for x in diff_w]
+            print('The weights have not equilibrated.')
+            print('Initial weights: %s' % (' '.join([str(i) for i in self.init_w])))
+            print('Final weights:   %s' % (' '.join([str(i) for i in self.final_w])))
+            print('The difference between the initial weights and final weights are:')
+            print(' '.join(str(i) for i in diff_w))
+            print('\nThe Wan-Landau incrementor has be updated for %s times.' % N_updated)
+            print('The last time frame that the Wang-Landau incrementor was updated (%5.3f ns) is %s.' %
+                  (time[-1] / 1000, str(wl_incrementor[-1])))
+            print('The Wang-Landau scale and the cutoff of Wang-Landau incrementor are %s and %s, respectively.' %
+                  (str(self.wl_scale), str(self.cutoff)))
+            print('Therefore, it requires %s more updates in Wang-Landau incrementor for the weights to be equilibrated.' % N_update)
+            print('Check the log file for more information.')
+            return time, wl_incrementor
+            #sys.exit()
+
+        # ================== 4. Additional information =======================
+        if self.equil is True:
+            avg_counts = sum(equil_counts) / len(equil_counts)
+            self.max_Nratio = max(equil_counts) / avg_counts
+            self.min_Nratio = min(equil_counts) / avg_counts
+
+        # ==================== 5. Weights adjustment =========================
+        # Formula: g'_k = g_k + ln(count_(k - 1) / count_k)
+        if self.equil is True:    
+            weights_list = [float(final_weights.split()[i]) for i in range(len(final_weights.split()))]
+            weights_adjstd = np.zeros(len(weights_list))
+            wght_adjstd_str = ''
+            for i in range(len(weights_list)):
+                if i == 0:
+                    weights_adjstd[i] = 0
+                    wght_adjstd_str += '0.00000 ' 
+                else:
+                    weights_adjstd[i] = weights_list[i] + np.log(equil_counts[i - 1] / equil_counts[i])
+                    wght_adjstd_str += '%6.5f ' % weights_adjstd[i] 
+            RMSD = np.sqrt((1/len(weights_list) * sum((np.array(weights_list) - weights_adjstd) ** 2)))
+
+        # =================== 6. Uncertainty estimation ======================
         kb = 1.38064852E-23                               # Boltzmann constant
         Na = 6.0221409E23                                 # Avogadro's number
-        err_kt = np.abs(np.log(equil_counts[0] / equil_counts[-1]))
-        err_kcal = err_kt * (kb * Na * float(self.temp) / 1000) * 0.23900573613
-        print('The uncertainty of the free energy difference is %5.3f kT.\n'
-              % err_kt)
-        print('Or at the simulation temperature (%s K), the uncertainty is %5.3f kcal/mol\n' %
-              (str(float(self.temp)), err_kcal))
+        if self.equil is True:
+            err_kt = np.abs(np.log(equil_counts[0] / equil_counts[-1]))
+            err_kcal = err_kt * (kb * Na * float(self.temp) / 1000) * 0.23900573613
+            print('The uncertainty of the free energy difference is %5.3f kT.\n'
+                % err_kt)
+            print('Or at the simulation temperature (%s K), the uncertainty is %5.3f kcal/mol\n' %
+                (str(float(self.temp)), err_kcal))
 
-        return time, wl_incrementor, final_weights, equil_counts
+        return time, wl_incrementor #, final_weights, equil_counts, RMSD, wght_adjstd_str
 
     def get_avg_weights(self, logfile, avg_len):
         """
@@ -300,7 +354,10 @@ class EXEAnalysis(LogInfo):
 
             if 'Wang-Landau incrementor is:' in l and search_start is True:
                 for i in range(self.N_states):
-                    weights.append(float(lines[line_n + i + 1].split()[6]))
+                    if lines[line_n + i + 1].split()[-1] == '<<':
+                        weights.append(float(lines[line_n + i + 1].split()[-3]))
+                    else:
+                        weights.append(float(lines[line_n + i + 1].split()[-2]))
                 weights_all.append(weights)
                 weights = []
 
@@ -346,6 +403,7 @@ class EXEAnalysis(LogInfo):
         final_found = False
         line_n = 0
         final_counts = np.zeros(self.N_states)
+        self.final_w = []
         for l in lines:
             #  print(l)   # this will print from the bottom
             line_n += 1
@@ -354,7 +412,12 @@ class EXEAnalysis(LogInfo):
                 for i in range(self.N_states):
                     # start from lines[line_n - 3]
                     # 'MC-lambda information' is lines[line_n - 1]
-                    final_counts[i] = float(lines[line_n - 3 - i].split()[5])
+                    if lines[line_n - 4 - i].split()[-1] == '<<':
+                        self.final_w.append(float(lines[line_n - 4 - i].split()[-3]))
+                        final_counts[i] = float(lines[line_n - 4 - i].split()[-4])
+                    else:
+                        self.final_w.append(float(lines[line_n - 4 - i].split()[-2]))
+                        final_counts[i] = float(lines[line_n - 4 - i].split()[-3])
 
             if '  Step  ' in l and final_found is True:
                 # '    Step      Time    ' is lines[line_n - 1]
@@ -378,6 +441,8 @@ def main():
     rc('mathtext', **{'default': 'regular'})
     plt.rc('font', family='serif')
 
+    gen_mdp = False # whether to generate a new mdp for the fixed-weight simulation
+
     if args.log is None:
         args.log = []
         for file in os.listdir('.'):
@@ -387,6 +452,8 @@ def main():
             print('No log files found! Please check if the directory is correct or specify the name of the log files.')
         else:
             args.log = natsort.natsorted(args.log)
+        #if len(args.log) == 1:
+        #    gen_mdp = True
 
     if isinstance(args.log, str) and '*' in args.log:  # to enables wildcards
         args.log = natsort.natsorted(glob.glob(args.log), reverse=False)
@@ -422,10 +489,10 @@ def main():
         EXE = EXEAnalysis(args.log[i])
         e1 = timer.time()
         time_needed.append(e1 - s1)
-
-        if log_info.fixed is False:
+        
+        if log_info.fixed is False and EXE.equil is True:
             s2 = timer.time()
-            [time, wl_incrementor, weights_f, equil_counts] = EXE.get_equil_info(args.log[i])
+            [time, wl_incrementor, weights_f, equil_counts, RMSD, wght_adjstd_str] = EXE.get_equil_info(args.log[i])
             # If the weights are not equilibrated, the code temrinates here.
 
             time = time / 1000  # convert from ps to ns
@@ -433,7 +500,12 @@ def main():
             # Print the results!
             print('The weights were equilibrated at %5.3f ns\n' %
                   EXE.equil_time)
-            print('The final weights are:\n', weights_f)
+            print('The Wang-Landau ratio was set as %s, which means that all N_ratio should be larger than %s and smaller than %6.5f.\n'
+                % (log_info.wl_ratio, log_info.wl_ratio, 1 / float(log_info.wl_ratio)))
+            print('At the time that the weights were equilibrated, the largest and smallest N_ratio are %6.5f and %6.5f, respectively.\n'
+                % (EXE.max_Nratio, EXE.min_Nratio))
+            print('The final/equilibrated weights are:\n', weights_f)
+            print('The adjusted weights based on the equilibrated histogram are (RMSD: %6.5f kT):\n %s\n' % (RMSD, wght_adjstd_str))
 
             e2 = timer.time()
             time_needed.append(e2 - s2)
@@ -475,28 +547,33 @@ def main():
         if log_info.fixed is True:
             print('This is a fixed-weight expanded ensemble simulation.')
             print('Accordingly, only the final histogram will be output and saved.\n')
-        # Extract the final counts for plotting the final histogram, no matter
-        # the weights are fixed during the simulation
-        final_time, final_counts = EXE.get_final_counts(args.log[i])
-        final_time /= 1000    # from ps to ns
-        ftime_title = str(round(final_time, 1))  # 1st decimal point
-        ftime_png = str(int(round(final_time, 0)))    # round to integer
-        # the keyword corresponding to the final time in the filename of png
+        
+        if EXE.equil is False:
+            EXE.get_equil_info(args.log[i])
 
-        # Plot the final histogram
-        plt.figure()
-        plt.bar(np.arange(1, log_info.N_states + 1), height=final_counts)
-        plt.xlabel('States')
-        plt.ylabel('Counts')
-        plt.minorticks_on()
-        plt.title('The final histogram of the simulation (at %s ns)' % ftime_title)
-        if max(final_counts) >= 10000:
-            plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
-        plt.grid()
-        plt.savefig('Final_hist_%sns_%s.png' % (ftime_png, args.keyword[i]), dpi=600)
-        e5 = timer.time()
-        time_needed.append(e5 - s5)
-        plt.show()
+        if log_info.fixed is False and EXE.equil is False or log_info.fixed is True:
+            # Extract the final counts for plotting the final histogram, no matter
+            # the weights are fixed during the simulation
+            final_time, final_counts = EXE.get_final_counts(args.log[i])
+            final_time /= 1000    # from ps to ns
+            ftime_title = str(round(final_time, 1))  # 1st decimal point
+            ftime_png = str(int(round(final_time, 0)))    # round to integer
+            # the keyword corresponding to the final time in the filename of png
+
+            # Plot the final histogram
+            plt.figure()
+            plt.bar(np.arange(1, log_info.N_states + 1), height=final_counts)
+            plt.xlabel('States')
+            plt.ylabel('Counts')
+            plt.minorticks_on()
+            plt.title('The final histogram of the simulation (at %s ns)' % ftime_title)
+            if max(final_counts) >= 10000:
+                plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
+            plt.grid()
+            plt.savefig('Final_hist_%sns_%s.png' % (ftime_png, args.keyword[i]), dpi=600)
+            e5 = timer.time()
+            time_needed.append(e5 - s5)
+            plt.show()
 
         
         # Average weights calculation
@@ -508,6 +585,58 @@ def main():
                 % (str(EXE.avg_start / 1000), str(EXE.avg_end / 1000)), weights_a, '\n')
             e6 = timer.time()
             time_needed.append(e6 - s6)
+        
+        # Generate the new mdp file for the fixed-weight simulation
+        # Note that this section of code is unreachable if the weights had not bee equilibrated
+        if args.mdp is None and gen_mdp is True:
+            for file in os.listdir('.'):
+                if file.endswith('.mdp') and file != 'mdout.mdp':
+                    args.mdp = file
+            if args.mdp is None:
+                gen_mdp = False
+                print('No mdp file provided or found! Therefore, no mdp file for the fixed-weight simulation will be generated.\n')
+
+        if gen_mdp is True:
+            new_mdp = args.mdp.split('.mdp')[0] + '_fixed.mdp'
+            print('Generating a new mdp file for the fixed-weight simulation from %s ...\n' % args.mdp)
+            f = open(args.mdp, 'r')
+            mdp_lines = f.readlines()
+            f.close()
+            
+            # make sure to start from an empty file
+            if os.path.isfile(new_mdp):
+                os.system("rm %s" % new_mdp)
+            else:
+                os.system("touch %s" % new_mdp)
+        
+            for l in mdp_lines:
+                with open(new_mdp, "a+") as file:
+                    # turn off lmc-stats
+                    if 'lmc-stats' in l:
+                        space = l.split('=')[0].split('lmc-stats')[1]
+                        l = 'lmc-stats' + space + '= no\n'
+
+                    # parameters to be commented out
+                    if 'lmc-weights-equil' in l \
+                        or 'weight-equil-wl-delta' in l \
+                        or 'init-wl-delta' in l \
+                        or 'wl-scale' in l \
+                        or 'wl-ratio' in l:
+                        l = ';' + l
+
+                    # initial guess of the weights
+                    if 'init-lambda-weights' in l:
+                        space = l.split('=')[0].split('init-lambda-weights')[1]
+                        l = 'init-lambda-weights' + space + '= '
+                        if args.weights == 'equilibrated':
+                            l += weights_f + '\n'
+                        if args.weights == 'adjusted':
+                            l += wght_adjstd_str + '\n'
+                        if args.weights == 'average':
+                            l += weights_a + '\n'
+                    file.write(l)
+            print('Type of weights to be used: %s\n' % args.weights)
+            print('A new mdp file for the fixed-weight simulation (%s) is generated!\n' % new_mdp)
 
     print('%s file(s) analyzed.' % len(args.log))
     print('Total time elapsed (including plotting): %s seconds.\n'
