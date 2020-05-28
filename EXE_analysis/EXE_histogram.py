@@ -90,6 +90,7 @@ class LogInfo:
         self.dt, self.cutoff, self.wl_scale, self.N_states, self.fixed, \
             self.init_wl, self.temp, self.start, self.nstlog, self.wl_ratio = None, None, \
             None, None, None, None, None, None, None, None
+        self.init_w = []
         line_n = 0
 
         for l in lines:
@@ -123,6 +124,9 @@ class LogInfo:
 
             if 'ref-t' in l and self.temp is None:
                 self.temp = l.split(':')[1]
+
+            if 'init-lambda-weights[' in l:
+                self.init_w.append(float(l.split('=')[1]))
 
             if 'Started mdrun' in l:
                 self.start = line_n
@@ -257,9 +261,18 @@ class EXEAnalysis(LogInfo):
 
         # ========== 3. Exit if the weights have not equilibrated ============
         if self.fixed is False and self.equil is False:
+            N_updated = int(np.log(wl_incrementor[-1] / self.init_wl) / np.log(self.wl_scale))
             N_update = int(np.ceil(np.log(self.cutoff / wl_incrementor[-1]) /
-                                   np.log(self.wl_scale)))
+                                   np.log(self.wl_scale)))  # number of updates required
+            _, _ = self.get_final_counts(logfile)  # to get self.final_w
+            diff_w = np.array(self.final_w) - np.array(self.init_w)
+            diff_w = [round(x, 2) for x in diff_w]
             print('The weights have not equilibrated.')
+            print('Initial weights: %s' % (' '.join([str(i) for i in self.init_w])))
+            print('Final weights:   %s' % (' '.join([str(i) for i in self.final_w])))
+            print('The difference between the initial weights and final weights are:')
+            print(' '.join(str(i) for i in diff_w))
+            print('\nThe Wan-Landau incrementor has be updated for %s times.' % N_updated)
             print('The last time frame that the Wang-Landau incrementor was updated (%5.3f ns) is %s.' %
                   (time[-1] / 1000, str(wl_incrementor[-1])))
             print('The Wang-Landau scale and the cutoff of Wang-Landau incrementor are %s and %s, respectively.' %
@@ -390,6 +403,7 @@ class EXEAnalysis(LogInfo):
         final_found = False
         line_n = 0
         final_counts = np.zeros(self.N_states)
+        self.final_w = []
         for l in lines:
             #  print(l)   # this will print from the bottom
             line_n += 1
@@ -398,10 +412,12 @@ class EXEAnalysis(LogInfo):
                 for i in range(self.N_states):
                     # start from lines[line_n - 3]
                     # 'MC-lambda information' is lines[line_n - 1]
-                    if lines[line_n - 3 - i].split()[-1] == '<<':
-                        final_counts[i] = float(lines[line_n - 3 - i].split()[-4])
+                    if lines[line_n - 4 - i].split()[-1] == '<<':
+                        self.final_w.append(float(lines[line_n - 4 - i].split()[-3]))
+                        final_counts[i] = float(lines[line_n - 4 - i].split()[-4])
                     else:
-                        final_counts[i] = float(lines[line_n - 3 - i].split()[-3])
+                        self.final_w.append(float(lines[line_n - 4 - i].split()[-2]))
+                        final_counts[i] = float(lines[line_n - 4 - i].split()[-3])
 
             if '  Step  ' in l and final_found is True:
                 # '    Step      Time    ' is lines[line_n - 1]
@@ -535,7 +551,7 @@ def main():
         if EXE.equil is False:
             EXE.get_equil_info(args.log[i])
 
-        if log_info.fixed is False and EXE.equil is True or log_info.fixed is True:
+        if log_info.fixed is False and EXE.equil is False or log_info.fixed is True:
             # Extract the final counts for plotting the final histogram, no matter
             # the weights are fixed during the simulation
             final_time, final_counts = EXE.get_final_counts(args.log[i])
