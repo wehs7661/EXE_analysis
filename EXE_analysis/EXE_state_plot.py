@@ -166,7 +166,7 @@ class StateTimeAnalysis(EXEAnalysis):
             plt.text(0, max(y) * 0.98, '(Number of times that all the states were sampled: %s)' %
                      len(y), fontsize=9)
             plt.xlabel('Simulation time (ns)')
-            plt.ylabel('Time required to sample all the states (ns)')
+            plt.ylabel('Time required to sample all the states (ps)')
             plt.savefig(png_name)
             plt.show()
 
@@ -174,7 +174,7 @@ class StateTimeAnalysis(EXEAnalysis):
             plt.scatter(x, y, color='k')
             plt.xscale('log')
             plt.xlabel('Wang-Landau incrementor ($ k_{B} T$)')
-            plt.ylabel('Time required to sample all the states (ns)')
+            plt.ylabel('Time required to sample all the states (ps)')
             plt.savefig(png_name)
             plt.show()
 

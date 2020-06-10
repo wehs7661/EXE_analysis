@@ -261,10 +261,11 @@ class EXEAnalysis(LogInfo):
 
         # ========== 3. Exit if the weights have not equilibrated ============
         if self.fixed is False and self.equil is False:
-            N_updated = int(np.log(wl_incrementor[-1] / self.init_wl) / np.log(self.wl_scale))
-            N_update = int(np.ceil(np.log(self.cutoff / wl_incrementor[-1]) /
-                                   np.log(self.wl_scale)))  # number of updates required
-            _, _ = self.get_final_counts(logfile)  # to get self.final_w
+            if len(wl_incrementor) != 0:
+                N_updated = len(wl_incrementor) -1 
+                N_update = int(np.ceil(np.log(self.cutoff / wl_incrementor[-1]) /
+                                np.log(self.wl_scale)))  # number of updates required
+            _, final_counts = self.get_final_counts(logfile)  # to get self.final_w
             diff_w = np.array(self.final_w) - np.array(self.init_w)
             diff_w = [round(x, 2) for x in diff_w]
             print('The weights have not equilibrated.')
@@ -272,13 +273,32 @@ class EXEAnalysis(LogInfo):
             print('Final weights:   %s' % (' '.join([str(i) for i in self.final_w])))
             print('The difference between the initial weights and final weights are:')
             print(' '.join(str(i) for i in diff_w))
-            print('\nThe Wan-Landau incrementor has be updated for %s times.' % N_updated)
+            print('\nThe Wan-Landau incrementor has been updated for %s times.' % N_updated)
             print('The last time frame that the Wang-Landau incrementor was updated (%5.3f ns) is %s.' %
                   (time[-1] / 1000, str(wl_incrementor[-1])))
             print('The Wang-Landau scale and the cutoff of Wang-Landau incrementor are %s and %s, respectively.' %
                   (str(self.wl_scale), str(self.cutoff)))
             print('Therefore, it requires %s more updates in Wang-Landau incrementor for the weights to be equilibrated.' % N_update)
             print('Check the log file for more information.')
+
+
+            
+            #weights_list = [float(self.final_w.split()[i]) for i in range(len(self.final_w.split()))]
+            weights_list = self.final_w
+            weights_adjstd = np.zeros(len(weights_list))
+            wght_adjstd_str = ''
+            for i in range(len(weights_list)):
+                if i == 0:
+                    weights_adjstd[i] = 0
+                    wght_adjstd_str += '0.00000 ' 
+                else:
+                    weights_adjstd[i] = weights_list[i] + np.log(final_counts[i - 1] / final_counts[i])
+                    wght_adjstd_str += '%6.5f ' % weights_adjstd[i] 
+            RMSD = np.sqrt((1/len(weights_list) * sum((np.array(weights_list) - weights_adjstd) ** 2)))
+            print(wght_adjstd_str)
+            
+
+
             return time, wl_incrementor
             #sys.exit()
 
@@ -302,7 +322,7 @@ class EXEAnalysis(LogInfo):
                     weights_adjstd[i] = weights_list[i] + np.log(equil_counts[i - 1] / equil_counts[i])
                     wght_adjstd_str += '%6.5f ' % weights_adjstd[i] 
             RMSD = np.sqrt((1/len(weights_list) * sum((np.array(weights_list) - weights_adjstd) ** 2)))
-
+            print(weights_adjstd_str)
         # =================== 6. Uncertainty estimation ======================
         kb = 1.38064852E-23                               # Boltzmann constant
         Na = 6.0221409E23                                 # Avogadro's number
@@ -314,7 +334,7 @@ class EXEAnalysis(LogInfo):
             print('Or at the simulation temperature (%s K), the uncertainty is %5.3f kcal/mol\n' %
                 (str(float(self.temp)), err_kcal))
 
-        return time, wl_incrementor #, final_weights, equil_counts, RMSD, wght_adjstd_str
+        return time, wl_incrementor#, final_weights, equil_counts, RMSD, wght_adjstd_str
 
     def get_avg_weights(self, logfile, avg_len):
         """
@@ -409,15 +429,18 @@ class EXEAnalysis(LogInfo):
             line_n += 1
             if 'MC-lambda information' in l:  # should find this line first
                 final_found = True
+                if self.fixed is True:
+                    data_line = line_n - 3
+                else:
+                    data_line = line_n - 4
+
                 for i in range(self.N_states):
-                    # start from lines[line_n - 3]
-                    # 'MC-lambda information' is lines[line_n - 1]
-                    if lines[line_n - 4 - i].split()[-1] == '<<':
-                        self.final_w.append(float(lines[line_n - 4 - i].split()[-3]))
-                        final_counts[i] = float(lines[line_n - 4 - i].split()[-4])
+                    if lines[data_line - i].split()[-1] == '<<':
+                        self.final_w.append(float(lines[data_line - i].split()[-3]))
+                        final_counts[i] = float(lines[data_line - i].split()[-4])
                     else:
-                        self.final_w.append(float(lines[line_n - 4 - i].split()[-2]))
-                        final_counts[i] = float(lines[line_n - 4 - i].split()[-3])
+                        self.final_w.append(float(lines[data_line - i].split()[-2]))
+                        final_counts[i] = float(lines[data_line - i].split()[-3])
 
             if '  Step  ' in l and final_found is True:
                 # '    Step      Time    ' is lines[line_n - 1]
