@@ -119,6 +119,13 @@ class StateTimeAnalysis(EXEAnalysis):
         state = np.array(state)
         time = np.array(time) / 1000      # units: ns
 
+        max_jump = max(np.diff(state))
+        max_jump_idx = list(np.diff(state)).index(max_jump) # idx in np.diff(state)
+        max_jump_start = state[max_jump_idx]
+        max_jump_time = time[max_jump_idx]
+        print(f'Biggest jump between states: {max_jump}')
+        print(f'The biggest jump happened at {max_jump_time} ns, from state {max_jump_start} to state {state[max_jump_idx + 1]}.')
+
         return time, state, visit_time
 
     def plot_data(self, x, y, type, title, png_name, trnctd=False):
@@ -172,7 +179,7 @@ class StateTimeAnalysis(EXEAnalysis):
 
         elif type == 'visit-wl':
             plt.scatter(x, y, color='k')
-            plt.xscale('log')
+            #plt.xscale('log')
             plt.xlabel('Wang-Landau incrementor ($ k_{B} T$)')
             plt.ylabel('Time required to sample all the states (ps)')
             plt.savefig(png_name)
@@ -314,7 +321,7 @@ def main():
             # Then STA.get_equil_info is needed
             STA = StateTimeAnalysis(args.log[i])   # inherit attributes from EXE
             
-
+            #STA.equil = True
 
             # print out relevant info
             print('This is a non-fixed-weight simulation.\n')   # EXE.get_equil_info needed
@@ -322,7 +329,7 @@ def main():
             title_t = 'Exploration of states as a function of time with fixed weights'   # for post-equilibration
             png_name_w = 'state_plot_%s_whole.png' % args.keyword[i]
             png_name_t = 'state_plot_%s_truncated.png' % args.keyword[i]
-
+            
             if STA.equil is True:   # Case 2-1: equilibrating weight simulation with wegiths equilibrated at some point
                 wl_time, wl_incrementor, _, _, _, _ = STA.get_equil_info(args.log[i])   # update attributes like equil_time
                 # Since STA inherits from EXE, instead of using STA.get_equil_info, we can use STA.get_equil_info
@@ -390,7 +397,7 @@ def main():
                 time, state, visit = STA.get_state_time(args.dhdl[i], args.freq)
                 print('The length of the whole simulation: %6.3f ns.\n' % time[-1])
                 STA.plot_data(time, state, 'state-time', title, png_name)
-
+                print(time, state)
                 # visit-time plot
                 if not visit:
                     print('The system could not sample all the states during %s ns of simulation.\n' % time[-1])

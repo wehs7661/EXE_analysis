@@ -191,12 +191,12 @@ class EXEAnalysis(LogInfo):
 
         # ============= 2. Extract wl-incrementors and weights ===============
         for l in lines[self.start:]:  # skip the metadata
-            line_n += 1
             if 'Wang-Landau incrementor is' in l and not wl_incrementor:
                 # not wl_incrementor returns True if the list if
                 wl_incrementor.append(self.init_wl)  # initial wl-incrementor
 
             if 'weights are now: ' in l:
+                n += 1
                 # this line only appears before the Wang-Landau incrementor is
                 # about to change
                 weights_line = l.split(':')
@@ -258,10 +258,9 @@ class EXEAnalysis(LogInfo):
 
         time = np.array(step) * self.dt  # time array for plotting
         wl_incrementor = np.array(wl_incrementor)
-
         # ========== 3. Exit if the weights have not equilibrated ============
         if self.fixed is False and self.equil is False:
-            if len(wl_incrementor) != 0:
+            if len(wl_incrementor) != 0 and self.wl_scale < 0.999:  # avoid speical cases that wl_scale > 0.999
                 N_updated = len(wl_incrementor) -1 
                 N_update = int(np.ceil(np.log(self.cutoff / wl_incrementor[-1]) /
                                 np.log(self.wl_scale)))  # number of updates required
@@ -273,12 +272,12 @@ class EXEAnalysis(LogInfo):
             print('Final weights:   %s' % (' '.join([str(i) for i in self.final_w])))
             print('The difference between the initial weights and final weights are:')
             print(' '.join(str(i) for i in diff_w))
-            print('\nThe Wan-Landau incrementor has been updated for %s times.' % N_updated)
-            print('The last time frame that the Wang-Landau incrementor was updated (%5.3f ns) is %s.' %
-                  (time[-1] / 1000, str(wl_incrementor[-1])))
-            print('The Wang-Landau scale and the cutoff of Wang-Landau incrementor are %s and %s, respectively.' %
-                  (str(self.wl_scale), str(self.cutoff)))
-            print('Therefore, it requires %s more updates in Wang-Landau incrementor for the weights to be equilibrated.' % N_update)
+            #print('\nThe Wan-Landau incrementor has been updated for %s times.' % N_updated)
+            #print('The last time frame that the Wang-Landau incrementor was updated (%5.3f ns) is %s.' %
+                  #(time[-1] / 1000, str(wl_incrementor[-1])))
+            #print('The Wang-Landau scale and the cutoff of Wang-Landau incrementor are %s and %s, respectively.' %
+                  #(str(self.wl_scale), str(self.cutoff)))
+            #print('Therefore, it requires %s more updates in Wang-Landau incrementor for the weights to be equilibrated.' % N_update)
             print('Check the log file for more information.')
 
 
@@ -322,7 +321,7 @@ class EXEAnalysis(LogInfo):
                     weights_adjstd[i] = weights_list[i] + np.log(equil_counts[i - 1] / equil_counts[i])
                     wght_adjstd_str += '%6.5f ' % weights_adjstd[i] 
             RMSD = np.sqrt((1/len(weights_list) * sum((np.array(weights_list) - weights_adjstd) ** 2)))
-            print(weights_adjstd_str)
+            print(wght_adjstd_str)
         # =================== 6. Uncertainty estimation ======================
         kb = 1.38064852E-23                               # Boltzmann constant
         Na = 6.0221409E23                                 # Avogadro's number
@@ -334,7 +333,7 @@ class EXEAnalysis(LogInfo):
             print('Or at the simulation temperature (%s K), the uncertainty is %5.3f kcal/mol\n' %
                 (str(float(self.temp)), err_kcal))
 
-        return time, wl_incrementor#, final_weights, equil_counts, RMSD, wght_adjstd_str
+        return time, wl_incrementor, final_weights, equil_counts, RMSD, wght_adjstd_str
 
     def get_avg_weights(self, logfile, avg_len):
         """
@@ -350,6 +349,7 @@ class EXEAnalysis(LogInfo):
         weights_avg : np.array
             The average weights over an user-defined length of the simulation.
         """
+        self.avg_end=5000
         self.avg_start = self.avg_end - avg_len * 1000     # unit: ps
         if self.avg_start <= 0:
             print('The starting point of the weights average calculation is less than 0!')
@@ -369,10 +369,12 @@ class EXEAnalysis(LogInfo):
         # collect the data of weights to be averaged
         for l in lines[self.start:]:    # skip the metadata
             line_n += 1
+
             if str(self.avg_start) in l:
                 search_start = True
-
-            if 'Wang-Landau incrementor is:' in l and search_start is True:
+            search_start=True
+            #if 'Wang-Landau incrementor is:' in l and search_start is True:
+            if 'MC-lambda information' in l and search_start is True:
                 for i in range(self.N_states):
                     if lines[line_n + i + 1].split()[-1] == '<<':
                         weights.append(float(lines[line_n + i + 1].split()[-3]))
@@ -395,7 +397,7 @@ class EXEAnalysis(LogInfo):
         weights_avg = ''   # make weights_avg as a string to be easily copied
         for i in range(len(weights_avg_float)):
             weights_avg += (' ' + str(weights_avg_float[i]))
-
+        print(weights_avg)
         return weights_avg
 
     def get_final_counts(self, logfile):
@@ -433,7 +435,7 @@ class EXEAnalysis(LogInfo):
                     data_line = line_n - 3
                 else:
                     data_line = line_n - 4
-
+                
                 for i in range(self.N_states):
                     if lines[data_line - i].split()[-1] == '<<':
                         self.final_w.append(float(lines[data_line - i].split()[-3]))
@@ -441,7 +443,16 @@ class EXEAnalysis(LogInfo):
                     else:
                         self.final_w.append(float(lines[data_line - i].split()[-2]))
                         final_counts[i] = float(lines[data_line - i].split()[-3])
-
+                
+                """
+                for i in range(self.N_states):
+                    if lines[data_line - i + 1].split()[-1] == '<<':
+                        self.final_w.append(float(lines[data_line - i + 1].split()[-3]))
+                        final_counts[i] = float(lines[data_line - i + 1].split()[-4])
+                    else:
+                        self.final_w.append(float(lines[data_line - i + 1].split()[-2]))
+                        final_counts[i] = float(lines[data_line - i + 1].split()[-3])
+                """ 
             if '  Step  ' in l and final_found is True:
                 # '    Step      Time    ' is lines[line_n - 1]
                 final_time = float(lines[line_n - 2].split()[1])  # in ps
@@ -512,10 +523,11 @@ def main():
         EXE = EXEAnalysis(args.log[i])
         e1 = timer.time()
         time_needed.append(e1 - s1)
-        
+
+        #output = EXE.get_equil_info(args.log[i])
         if log_info.fixed is False and EXE.equil is True:
             s2 = timer.time()
-            [time, wl_incrementor, weights_f, equil_counts, RMSD, wght_adjstd_str] = EXE.get_equil_info(args.log[i])
+            time, wl_incrementor, weights_f, equil_counts, RMSD, wght_adjstd_str = EXE.get_equil_info(args.log[i])
             # If the weights are not equilibrated, the code temrinates here.
 
             time = time / 1000  # convert from ps to ns
@@ -570,13 +582,12 @@ def main():
         if log_info.fixed is True:
             print('This is a fixed-weight expanded ensemble simulation.')
             print('Accordingly, only the final histogram will be output and saved.\n')
-        
-        if EXE.equil is False:
+        elif EXE.equil is False:
             EXE.get_equil_info(args.log[i])
 
         if log_info.fixed is False and EXE.equil is False or log_info.fixed is True:
-            # Extract the final counts for plotting the final histogram, no matter
-            # the weights are fixed during the simulation
+        # Extract the final counts for plotting the final histogram, no matter
+        # the weights are fixed during the simulation
             final_time, final_counts = EXE.get_final_counts(args.log[i])
             final_time /= 1000    # from ps to ns
             ftime_title = str(round(final_time, 1))  # 1st decimal point
@@ -600,7 +611,8 @@ def main():
 
         
         # Average weights calculation
-        if log_info.fixed is False and EXE.equil is True:
+        #if log_info.fixed is False and EXE.equil is True:
+        if True:
             s6 = timer.time()
             weights_a = EXE.get_avg_weights(args.log[i], args.avg_len)
             print('The average weights over the last %s ns' % str(args.avg_len),
