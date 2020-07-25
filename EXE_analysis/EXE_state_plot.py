@@ -95,6 +95,7 @@ class StateTimeAnalysis(EXEAnalysis):
                         break
 
         # Collect the state-time data and estimate the "visit-all time"
+        # Note that this is inaccurate unless nstdhdl = 1 ... (using log file would be better)
         visited = [False for i in range(self.N_states)]
         visit_start = 0         # starting point
         visit_time = []         # a list of visit-all times
@@ -127,6 +128,42 @@ class StateTimeAnalysis(EXEAnalysis):
         print(f'The biggest jump happened at {max_jump_time} ns, from state {max_jump_start} to state {state[max_jump_idx + 1]}.')
 
         return time, state, visit_time
+
+    def first_passage_time(self, log):
+        f = open(log, 'r')
+        lines = f.readlines()
+        f.close()
+
+        visited = [False for i in range(self.N_states)]
+
+
+        line_n = 0
+        current_time = 0
+        first_pass_t = None
+        for l in lines:
+            line_n += 1
+            if 'nstlog' in l:
+                self.nstlog = int(l.split('=')[1])
+
+            if 'init-lambda-states' in l:
+                visited[int(l.split('=')[1])] = True
+
+            if 'MC-lambda information' in l:
+                current_time += self.dt * self.nstlog # ps
+                for i in range(self.N_states):
+                    if '<<' in lines[line_n + i + 1]:
+                        if int(lines[line_n + i + 1].split()[-4]) != 0:
+                            visited[int(lines[line_n + i + 1].split()[0]) - 1] = True
+                    else:
+                        if int(lines[line_n + i + 1].split()[-3]) != 0:
+                            visited[int(lines[line_n + i + 1].split()[0]) - 1] = True
+                
+                if all(visited) is True:
+                    first_pass_t = current_time
+                    self.first_passage_line = line_n
+                    break
+
+        return first_pass_t
 
     def plot_data(self, x, y, type, title, png_name, trnctd=False):
         """
@@ -288,7 +325,7 @@ def main():
         STA = StateTimeAnalysis(args.log[i])
         # Note that STA inherits from EXE, which inherits from LogInfo
         # By initiating STA, we can use all the attributes/functions in EXE and LogInfo
-
+        
         if STA.fixed is True:     # Case 1: fixed-weight simulation (EXE.get_equil_info not needed)
             # print out relevant info
             print('This is a fixed-weight simulation.\n')
@@ -427,6 +464,12 @@ def main():
                                 if simulation_time[j] * 1000 > wl_time[k]:
                                     visit_wl[j] = wl_incrementor[k]
                     STA.plot_data(visit_wl, np.array(visit) / 1000, 'visit-wl', title, png_name_wl)
+        
+        first_pass_t = STA.first_passage_time(args.log[i])
+        if first_pass_t is None:
+            print('The system was not able to sample all the states during the simulation.')
+        else:
+            print(f'The system was able to sample all the states for the first time within {first_pass_t/1000} ns (Line {STA.first_passage_line}).')
 
         print('%s file(s) (%s simulation(s)) analyzed.' % (len(args.log) * 2, len(args.log)))
 

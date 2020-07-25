@@ -294,10 +294,8 @@ class EXEAnalysis(LogInfo):
                     weights_adjstd[i] = weights_list[i] + np.log(final_counts[i - 1] / final_counts[i])
                     wght_adjstd_str += '%6.5f ' % weights_adjstd[i] 
             RMSD = np.sqrt((1/len(weights_list) * sum((np.array(weights_list) - weights_adjstd) ** 2)))
-            print(wght_adjstd_str)
+            #print(wght_adjstd_str)
             
-
-
             return time, wl_incrementor
             #sys.exit()
 
@@ -349,7 +347,24 @@ class EXEAnalysis(LogInfo):
         weights_avg : np.array
             The average weights over an user-defined length of the simulation.
         """
-        self.avg_end=5000
+        if hasattr(self, 'avg_end') is False or self.avg_end is None:
+            f = open(logfile, 'r')
+            lines = f.readlines()
+            f.close()
+            lines.reverse()
+
+            line_n = 0
+            for l in lines:
+                line_n += 1
+                if 'MC-lambda information' in l:
+                    search_lines = lines[line_n + 1: line_n + 10]
+                    for l_search in search_lines:
+                        line_n += 1
+                        if 'Step' in l_search and 'Time' in l_search:
+                            self.avg_end = float(lines[line_n - 1].split()[1])
+                            break
+                    break
+    
         self.avg_start = self.avg_end - avg_len * 1000     # unit: ps
         if self.avg_start <= 0:
             print('The starting point of the weights average calculation is less than 0!')
@@ -370,9 +385,10 @@ class EXEAnalysis(LogInfo):
         for l in lines[self.start:]:    # skip the metadata
             line_n += 1
 
-            if str(self.avg_start) in l:
-                search_start = True
-            search_start=True
+            if 'Step' in l and 'Time' in l:
+                if (self.avg_start / self.dt) == float(lines[line_n].split()[0]) and (self.avg_start) == float(lines[line_n].split()[1]):
+                    search_start = True
+
             #if 'Wang-Landau incrementor is:' in l and search_start is True:
             if 'MC-lambda information' in l and search_start is True:
                 for i in range(self.N_states):
@@ -383,9 +399,16 @@ class EXEAnalysis(LogInfo):
                 weights_all.append(weights)
                 weights = []
 
-            if str(self.avg_end) in l:
-                break
-
+            #if 'Step' in l and 'Time' in l:
+            #    if (self.avg_end / self.dt) == float(lines[line_n].split()[0]) and (self.avg_end) == float(lines[line_n].split()[1]):
+            #        print(lines[line_n])
+            #        break
+        #last_weight = [weights_all[i][-1] for i in range(len(weights_all))]
+        #last_weight.sort(reverse=True)
+        #print(last_weight)
+        #print(last_weight[0])
+        #print(last_weight[-1])
+        #print(len(last_weight))
         # Average the weights
         list_sum = 0
         weights_all = np.array(weights_all)
@@ -397,7 +420,6 @@ class EXEAnalysis(LogInfo):
         weights_avg = ''   # make weights_avg as a string to be easily copied
         for i in range(len(weights_avg_float)):
             weights_avg += (' ' + str(weights_avg_float[i]))
-        print(weights_avg)
         return weights_avg
 
     def get_final_counts(self, logfile):
@@ -435,7 +457,7 @@ class EXEAnalysis(LogInfo):
                     data_line = line_n - 3
                 else:
                     data_line = line_n - 4
-                
+                """
                 for i in range(self.N_states):
                     if lines[data_line - i].split()[-1] == '<<':
                         self.final_w.append(float(lines[data_line - i].split()[-3]))
@@ -443,8 +465,8 @@ class EXEAnalysis(LogInfo):
                     else:
                         self.final_w.append(float(lines[data_line - i].split()[-2]))
                         final_counts[i] = float(lines[data_line - i].split()[-3])
-                
                 """
+                
                 for i in range(self.N_states):
                     if lines[data_line - i + 1].split()[-1] == '<<':
                         self.final_w.append(float(lines[data_line - i + 1].split()[-3]))
@@ -452,7 +474,7 @@ class EXEAnalysis(LogInfo):
                     else:
                         self.final_w.append(float(lines[data_line - i + 1].split()[-2]))
                         final_counts[i] = float(lines[data_line - i + 1].split()[-3])
-                """ 
+                
             if '  Step  ' in l and final_found is True:
                 # '    Step      Time    ' is lines[line_n - 1]
                 final_time = float(lines[line_n - 2].split()[1])  # in ps
